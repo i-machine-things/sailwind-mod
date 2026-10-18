@@ -1,0 +1,453 @@
+[
+  {
+    "name": "island 26 lagoon parent terrain (-1)",
+    "index": -1,
+    "localPos": [
+      26766.6,
+      0.0,
+      -71111.4
+    ],
+    "lon": 2.974,
+    "lat": 28.099
+  },
+  {
+    "name": "island 1 A (gold rock)",
+    "index": 1,
+    "localPos": [
+      -44416.0,
+      0.0,
+      -43862.0
+    ],
+    "lon": -4.935,
+    "lat": 31.126
+  },
+  {
+    "name": "island 2 A (AlNilem)",
+    "index": 2,
+    "localPos": [
+      -48988.0,
+      0.0,
+      -42969.0
+    ],
+    "lon": -5.443,
+    "lat": 31.226
+  },
+  {
+    "name": "island 3 A (Neverdin)",
+    "index": 3,
+    "localPos": [
+      -48904.0,
+      0.0,
+      -46050.0
+    ],
+    "lon": -5.434,
+    "lat": 30.883
+  },
+  {
+    "name": "island 4 A (fish island)",
+    "index": 4,
+    "localPos": [
+      -40475.0,
+      0.0,
+      -46691.0
+    ],
+    "lon": -4.497,
+    "lat": 30.812
+  },
+  {
+    "name": "island 5 A (clear mind)",
+    "index": 5,
+    "localPos": [
+      -48292.0,
+      0.0,
+      -44373.0
+    ],
+    "lon": -5.366,
+    "lat": 31.07
+  },
+  {
+    "name": "island 6 A  (lion fang)",
+    "index": 6,
+    "localPos": [
+      -46627.0,
+      0.0,
+      -47080.0
+    ],
+    "lon": -5.181,
+    "lat": 30.769
+  },
+  {
+    "name": "island 7 A (alchemist's island)",
+    "index": 7,
+    "localPos": [
+      -43855.0,
+      0.0,
+      -48043.0
+    ],
+    "lon": -4.873,
+    "lat": 30.662
+  },
+  {
+    "name": "island 8 A (academy)",
+    "index": 8,
+    "localPos": [
+      -48322.0,
+      0.0,
+      -40295.0
+    ],
+    "lon": -5.369,
+    "lat": 31.523
+  },
+  {
+    "name": "island 9 E (dragon cliffs)",
+    "index": 9,
+    "localPos": [
+      43018.0,
+      0.0,
+      -41383.0
+    ],
+    "lon": 4.78,
+    "lat": 31.402
+  },
+  {
+    "name": "island 10 E (sanctuary)",
+    "index": 10,
+    "localPos": [
+      46145.0,
+      0.0,
+      -37137.0
+    ],
+    "lon": 5.127,
+    "lat": 31.874
+  },
+  {
+    "name": "island 11 E (crab beach)",
+    "index": 11,
+    "localPos": [
+      43811.0,
+      0.0,
+      -38703.0
+    ],
+    "lon": 4.868,
+    "lat": 31.7
+  },
+  {
+    "name": "island 12 E (New Port)",
+    "index": 12,
+    "localPos": [
+      42581.0,
+      0.0,
+      -34858.0
+    ],
+    "lon": 4.731,
+    "lat": 32.127
+  },
+  {
+    "name": "island 13 E (Sage Hills)",
+    "index": 13,
+    "localPos": [
+      40608.0,
+      0.0,
+      -45974.0
+    ],
+    "lon": 4.512,
+    "lat": 30.892
+  },
+  {
+    "name": "island 15 M (Fort)",
+    "index": 15,
+    "localPos": [
+      5744.0,
+      0.0,
+      38929.0
+    ],
+    "lon": 0.638,
+    "lat": 40.325
+  },
+  {
+    "name": "island 16 M (Sunspire)",
+    "index": 16,
+    "localPos": [
+      8765.0,
+      0.0,
+      38243.0
+    ],
+    "lon": 0.974,
+    "lat": 40.249
+  },
+  {
+    "name": "island 17 M (Mount Malefic)",
+    "index": 17,
+    "localPos": [
+      10778.0,
+      0.0,
+      35029.0
+    ],
+    "lon": 1.198,
+    "lat": 39.892
+  },
+  {
+    "name": "island 18 M (HappyBay)",
+    "index": 18,
+    "localPos": [
+      32324.0,
+      0.0,
+      -5748.0
+    ],
+    "lon": 3.592,
+    "lat": 35.361
+  },
+  {
+    "name": "island 19 M (Eastwind)",
+    "index": 19,
+    "localPos": [
+      1689.0,
+      0.0,
+      44261.0
+    ],
+    "lon": 0.188,
+    "lat": 40.918
+  },
+  {
+    "name": "island 20 A (Oasis)",
+    "index": 20,
+    "localPos": [
+      -45781.0,
+      0.0,
+      -29246.0
+    ],
+    "lon": -5.087,
+    "lat": 32.75
+  },
+  {
+    "name": "island 21 M (Siren Song)",
+    "index": 21,
+    "localPos": [
+      5178.6,
+      0.0,
+      42787.4
+    ],
+    "lon": 0.575,
+    "lat": 40.754
+  },
+  {
+    "name": "island 22 E (Serpent Isle)",
+    "index": 22,
+    "localPos": [
+      39511.0,
+      0.0,
+      -38235.0
+    ],
+    "lon": 4.39,
+    "lat": 31.752
+  },
+  {
+    "name": "island 23 M oracle",
+    "index": 23,
+    "localPos": [
+      1969.0,
+      0.0,
+      40044.0
+    ],
+    "lon": 0.219,
+    "lat": 40.449
+  },
+  {
+    "name": "island 25 (chronos)",
+    "index": 25,
+    "localPos": [
+      201263.0,
+      0.0,
+      21165.0
+    ],
+    "lon": 22.363,
+    "lat": 38.352
+  },
+  {
+    "name": "island 26 Lagoon Temple",
+    "index": 26,
+    "localPos": [
+      28416.0,
+      0.0,
+      -70722.0
+    ],
+    "lon": 3.157,
+    "lat": 28.142
+  },
+  {
+    "name": "island 27 Lagoon Shipyard",
+    "index": 27,
+    "localPos": [
+      26044.6,
+      0.0,
+      -71137.4
+    ],
+    "lon": 2.894,
+    "lat": 28.096
+  },
+  {
+    "name": "island 28 Lagoon Senna",
+    "index": 28,
+    "localPos": [
+      24718.6,
+      0.0,
+      -69919.4
+    ],
+    "lon": 2.747,
+    "lat": 28.231
+  },
+  {
+    "name": "island 29 Lagoon Onna",
+    "index": 29,
+    "localPos": [
+      25491.6,
+      0.0,
+      -69417.4
+    ],
+    "lon": 2.832,
+    "lat": 28.287
+  },
+  {
+    "name": "island 30 rock of despair",
+    "index": 30,
+    "localPos": [
+      40846.0,
+      27.1,
+      -3961.0
+    ],
+    "lon": 4.538,
+    "lat": 35.56
+  },
+  {
+    "name": "island 31 Lagoon Fisherman",
+    "index": 31,
+    "localPos": [
+      27053.0,
+      0.0,
+      -69632.0
+    ],
+    "lon": 3.006,
+    "lat": 28.263
+  },
+  {
+    "name": "island 32 A (hideout)",
+    "index": 32,
+    "localPos": [
+      -58150.0,
+      0.0,
+      -29027.0
+    ],
+    "lon": -6.461,
+    "lat": 32.775
+  },
+  {
+    "name": "island 33 M cave church",
+    "index": 33,
+    "localPos": [
+      7289.0,
+      0.0,
+      41884.0
+    ],
+    "lon": 0.81,
+    "lat": 40.654
+  },
+  {
+    "name": "island 34 M monastery",
+    "index": 34,
+    "localPos": [
+      2681.0,
+      0.0,
+      38818.0
+    ],
+    "lon": 0.298,
+    "lat": 40.313
+  },
+  {
+    "name": "island 35 M valley",
+    "index": 35,
+    "localPos": [
+      6754.0,
+      0.0,
+      42361.0
+    ],
+    "lon": 0.75,
+    "lat": 40.707
+  },
+  {
+    "name": "island 36",
+    "index": 36,
+    "localPos": [
+      -2416.0,
+      0.0,
+      47745.0
+    ],
+    "lon": -0.268,
+    "lat": 41.305
+  },
+  {
+    "name": "island 37 E (swamp)",
+    "index": 37,
+    "localPos": [
+      38611.0,
+      0.0,
+      -40171.0
+    ],
+    "lon": 4.29,
+    "lat": 31.537
+  },
+  {
+    "name": "island 38 E (jungle)",
+    "index": 38,
+    "localPos": [
+      47312.0,
+      0.0,
+      -41080.0
+    ],
+    "lon": 5.257,
+    "lat": 31.436
+  },
+  {
+    "name": "island 39 E (onsen)",
+    "index": 39,
+    "localPos": [
+      45241.0,
+      0.0,
+      -42049.0
+    ],
+    "lon": 5.027,
+    "lat": 31.328
+  },
+  {
+    "name": "island 40 (coffee)",
+    "index": 40,
+    "localPos": [
+      -45164.0,
+      -4.0,
+      -47280.0
+    ],
+    "lon": -5.018,
+    "lat": 30.747
+  },
+  {
+    "name": "island 41 (mirage mountain)",
+    "index": 41,
+    "localPos": [
+      -40568.0,
+      -20.0,
+      -26429.0
+    ],
+    "lon": -4.508,
+    "lat": 33.063
+  },
+  {
+    "name": "island 42",
+    "index": 42,
+    "localPos": [
+      -37944.0,
+      0.0,
+      -17391.0
+    ],
+    "lon": -4.216,
+    "lat": 34.068
+  }
+]

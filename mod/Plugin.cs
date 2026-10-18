@@ -81,4 +81,25 @@ namespace SailwindRealEarth
             Plugin.Log.LogInfo($"[RealEarth] GetGlobeCoords({Plugin.LastObserved}) -> lon={__result.x:F3} lat={__result.z:F3}");
         }
     }
+
+    // M1 step 1: survey every vanilla island's name, index, and real lat/lon at load time,
+    // same capture point scrambled-seas used (IslandHorizon.Start) to later reposition them.
+    [HarmonyPatch(typeof(IslandHorizon), "Start")]
+    internal static class IslandSurveyPatch
+    {
+        private static void Postfix(IslandHorizon __instance)
+        {
+            Vector3 localPos = __instance.transform.localPosition;
+            string globeStr = "n/a";
+            if (FloatingOriginManager.instance != null)
+            {
+                Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(__instance.transform);
+                globeStr = $"lon={globe.x:F3} lat={globe.z:F3}";
+            }
+
+            Plugin.Log.LogInfo(
+                $"[RealEarth][IslandSurvey] '{__instance.gameObject.name}' idx={__instance.islandIndex} " +
+                $"localPos={localPos} {globeStr}");
+        }
+    }
 }
