@@ -24,17 +24,18 @@ namespace SailwindRealEarth
         internal static float LastLat;
         internal static string LastObserved;
 
-        // M1 rehearsal only: an arbitrary fixed shift, not the final real-world mapping.
-        // Moves the vanilla archipelago's main cluster (centered roughly on lon -0.6, lat
-        // 34.7, excluding the Chronos outlier) onto the Caribbean (~18 deg N, 65 deg W),
-        // purely to prove the reposition-by-real-degrees technique works end to end.
-        internal const float ReposLonDeltaDeg = -64.4f;
-        internal const float ReposLatDeltaDeg = -16.7f;
+        // M1 rehearsal only: not the final real-world mapping. The full-size shift
+        // (-64.4 lon / -16.7 lat, ~580000 units) froze the game - see CODING_NOTES.md's
+        // "Floating origin" section. These are now config-bound (not const) specifically so
+        // we can empirically find the actual safe threshold by editing the saved .cfg and
+        // relaunching, without a rebuild each step, starting small and working up.
         internal const float UnitsPerDegree = 9000f;
-        internal static readonly Vector3 ReposOffset =
-            new Vector3(ReposLonDeltaDeg * UnitsPerDegree, 0f, ReposLatDeltaDeg * UnitsPerDegree);
-
+        internal static ConfigEntry<float> ReposLonDeltaDeg;
+        internal static ConfigEntry<float> ReposLatDeltaDeg;
         internal static ConfigEntry<bool> RepositionEnabled;
+
+        internal static Vector3 ReposOffset =>
+            new Vector3(ReposLonDeltaDeg.Value * UnitsPerDegree, 0f, ReposLatDeltaDeg.Value * UnitsPerDegree);
 
         private Harmony harmony;
         private bool overlayVisible = true;
@@ -45,12 +46,20 @@ namespace SailwindRealEarth
             RepositionEnabled = Config.Bind(
                 "RealEarth",
                 "RepositionIslands",
-                false,
-                "M1 rehearsal: shift the vanilla archipelago onto a real-world region " +
-                "(Caribbean) to validate the lat/lon repositioning math. Not the final mapping. " +
-                "DEFAULT OFF: a direct raw-world-space translate this large (~580000 units) " +
-                "froze the game in testing - see CODING_NOTES.md 'Floating origin' section " +
-                "before re-enabling.");
+                true,
+                "M1 rehearsal: shift the vanilla archipelago by RepositionLonDeltaDeg/"
+                + "RepositionLatDeltaDeg to validate the lat/lon repositioning math. Confirmed "
+                + "by empirical testing (see CODING_NOTES.md 'Floating origin'): safe/comfortable "
+                + "up to at least -48.3/-12.5 deg, visibly degraded by -56.35/-14.6, froze outright "
+                + "at the original -64.4/-16.7 Caribbean target. Default below kept well inside the "
+                + "confirmed-safe range with margin - do not push toward the degraded/frozen range "
+                + "without reading that section first.");
+            ReposLonDeltaDeg = Config.Bind(
+                "RealEarth", "RepositionLonDeltaDeg", -32.2f,
+                "Longitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
+            ReposLatDeltaDeg = Config.Bind(
+                "RealEarth", "RepositionLatDeltaDeg", -8.35f,
+                "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay");
@@ -108,10 +117,20 @@ namespace SailwindRealEarth
     // time, same capture point scrambled-seas used (IslandHorizon.Start). Verified in-game -
     // see data/vanilla_island_survey.json.
     //
-    // M1 step 2 (reposition): translates each island by Plugin.ReposOffset (a fixed, uniform
-    // world-space shift, same technique as scrambled-seas' WorldScrambler) so the whole
-    // archipelago keeps its relative shape but lands on real-world coordinates. This only
-    // moves IslandHorizon objects - region anchors, ocean-floor planes, ports, and boats
+    // M1 step 2 (reposition): moves each island by Plugin.ReposOffset so the whole
+    // archipelago keeps its relative shape but lands on different real-world coordinates.
+    // Goes through FloatingOriginManager's ShiftingPosToRealPos/RealPosToShiftingPos round
+    // trip - the same conversion BorderExpander's circumnavigation code uses for large moves
+    // - rather than a raw Transform.Translate. NOTE: per decompiling FloatingOriginManager
+    // itself, outCurrentOffset is still (0,0,0) at world-load time (it only becomes nonzero
+    // after the game's own Shift() has fired at least once), so this round trip is
+    // mathematically a no-op *right now* and is NOT expected to be what fixes the freeze by
+    // itself - it's here because it's the technically correct pattern (matches how the rest
+    // of the ecosystem does large moves, and stays correct if this ever runs after a shift
+    // has occurred). The actual fix is finding a safe magnitude empirically via
+    // RepositionLonDeltaDeg/RepositionLatDeltaDeg - see CODING_NOTES.md.
+    //
+    // Only moves IslandHorizon objects - region anchors, ocean-floor planes, ports, and boats
     // (which scrambled-seas' WorldScrambler also moves) are deliberately out of scope for
     // this rehearsal step.
     [HarmonyPatch(typeof(IslandHorizon), "Start")]
@@ -122,9 +141,13 @@ namespace SailwindRealEarth
             Vector3 localPos = __instance.transform.localPosition;
             Vector3 beforeGlobe = GetGlobe(__instance.transform);
 
-            if (Plugin.RepositionEnabled != null && Plugin.RepositionEnabled.Value)
+            if (Plugin.RepositionEnabled != null && Plugin.RepositionEnabled.Value
+                && FloatingOriginManager.instance != null)
             {
-                __instance.transform.Translate(Plugin.ReposOffset, Space.World);
+                FloatingOriginManager fom = FloatingOriginManager.instance;
+                Vector3 realPos = fom.ShiftingPosToRealPos(__instance.transform.position);
+                Vector3 targetReal = realPos + Plugin.ReposOffset;
+                __instance.transform.position = fom.RealPosToShiftingPos(targetReal);
             }
 
             Vector3 afterGlobe = GetGlobe(__instance.transform);
