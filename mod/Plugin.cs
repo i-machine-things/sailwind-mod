@@ -45,9 +45,12 @@ namespace SailwindRealEarth
             RepositionEnabled = Config.Bind(
                 "RealEarth",
                 "RepositionIslands",
-                true,
+                false,
                 "M1 rehearsal: shift the vanilla archipelago onto a real-world region " +
-                "(Caribbean) to validate the lat/lon repositioning math. Not the final mapping.");
+                "(Caribbean) to validate the lat/lon repositioning math. Not the final mapping. " +
+                "DEFAULT OFF: a direct raw-world-space translate this large (~580000 units) " +
+                "froze the game in testing - see CODING_NOTES.md 'Floating origin' section " +
+                "before re-enabling.");
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay");

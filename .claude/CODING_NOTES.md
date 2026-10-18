@@ -23,3 +23,9 @@
 
 - **`FloatingOriginManager.instance.GetGlobeCoords(transform)` is the game's real, built-in lat/lon API** — `.x` = longitude, `.z` = latitude, ~9000 Unity units per degree. Confirmed by reading real shipped mod source (`NANDbrew/BorderExpander`, `Rahakami/scrambled-seas`), not by guessing. Don't build a parallel coordinate system — extend this one.
 - **`NANDbrew/BorderExpander` already expands `WorldBorder` to ±70° latitude and implements east/west circumnavigation (antimeridian wraparound).** Depend on it rather than reimplementing border/wraparound logic.
+
+## Floating origin — don't raw-translate objects far from where they already are
+
+- **A direct `Transform.Translate(offset, Space.World)` by real-world-scale distances (~580,000 Unity units) froze the game** (pinned CPU, log stopped progressing) when repositioning all 41 islands onto the Caribbean. `scrambled-seas`'s similar island-randomizer never hits this because it only shuffles islands *within* the existing vanilla lon/lat box (-12/32E, 26/46N) — it never pushes raw Unity coordinates beyond what the engine/physics/Crest-ocean are already tested at.
+- **The fix is to route large repositioning through the floating-origin system, not a raw translate** — `BorderExpander`'s own circumnavigation code calls `FloatingOriginManager.instance.RealPosToShiftingPos(...)` before moving a boat a large distance, specifically to avoid this. A real-world-scale reposition/streaming system should drive `FloatingOriginManager`'s own re-centering rather than translating individual objects by huge raw offsets.
+- **Mitigation in place:** `RealEarth/RepositionIslands` BepInEx config defaults to `false` until this is redesigned. Don't flip it back to `true` without addressing the above first.
