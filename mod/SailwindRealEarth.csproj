@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AssemblyName>SailwindRealEarth</AssemblyName>
+    <RootNamespace>SailwindRealEarth</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Points at the live Sailwind install so references always match what's actually loaded. -->
+    <SailwindDir>/home/allan/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Sailwind</SailwindDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- .NET Framework 4.7.2 reference assemblies, fetched from NuGet so we can build on Linux without the real framework installed. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- BepInEx + HarmonyX, referenced directly from the installed BepInEx/core so versions always match the runtime. -->
+    <Reference Include="BepInEx">
+      <HintPath>$(SailwindDir)/BepInEx/core/BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(SailwindDir)/BepInEx/core/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Game assemblies, referenced directly from the installed game. -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(SailwindDir)/Sailwind_Data/Managed/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(SailwindDir)/Sailwind_Data/Managed/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(SailwindDir)/Sailwind_Data/Managed/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(SailwindDir)/Sailwind_Data/Managed/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Drop the built plugin straight into the live BepInEx/plugins folder, same convention other Sailwind mods use. -->
+  <Target Name="DeployPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <DeployFiles Include="$(OutputPath)SailwindRealEarth.dll" />
+    </ItemGroup>
+    <MakeDir Directories="$(SailwindDir)/BepInEx/plugins/SailwindRealEarth" />
+    <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(SailwindDir)/BepInEx/plugins/SailwindRealEarth" />
+  </Target>
+
+</Project>
