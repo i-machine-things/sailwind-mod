@@ -43,15 +43,31 @@ def _is_git_commit_command(command: str) -> bool:
     # backslash-style paths (Windows-compatible per this hook's own docstring), which the old
     # `t.endswith("/git")` check missed. Caught by CodeRabbit.
     #
-    # Only count a "git"-like token in COMMAND position (index 0, or right after a separator) -
-    # otherwise "echo git commit" (just text passed to echo, never actually invoking git) was a
-    # false positive, since "git" appeared somewhere in the token stream regardless of whether
-    # it was actually being run. Caught by CodeRabbit (PR #2), third pass.
+    # Only count a "git"-like token in COMMAND position (start of command, or right after a
+    # separator) - otherwise "echo git commit" (just text passed to echo, never actually
+    # invoking git) was a false positive, since "git" appeared somewhere in the token stream
+    # regardless of whether it was actually being run. Caught by CodeRabbit (PR #2), third pass.
     _SEPARATORS = frozenset({"&&", "||", ";", "&", "|"})
+    _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+    def _is_command_position(idx: int) -> bool:
+        # Walk backward past any leading VAR=value assignments (e.g. "GIT_TRACE=1 git commit"
+        # is a real, valid way to invoke git - the env assignment doesn't change what the
+        # actual command is). Caught by CodeRabbit (PR #2), sixth pass.
+        j = idx - 1
+        while j >= 0:
+            prev = tokens[j]
+            if prev in _SEPARATORS:
+                return True
+            if _ENV_ASSIGNMENT.match(prev):
+                j -= 1
+                continue
+            return False
+        return True
+
     git_idxs = [
         i for i, t in enumerate(tokens)
-        if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE)
-        and (i == 0 or tokens[i - 1] in _SEPARATORS)
+        if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE) and _is_command_position(i)
     ]
     if not git_idxs:
         return False
