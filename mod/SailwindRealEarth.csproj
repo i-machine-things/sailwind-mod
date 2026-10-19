@@ -46,13 +46,17 @@
     </Reference>
   </ItemGroup>
 
-  <!-- Drop the built plugin straight into the live BepInEx/plugins folder, same convention other Sailwind mods use. -->
+  <!-- Drop the built plugin straight into the live BepInEx/plugins folder, same convention other Sailwind mods use.
+       Also deploys data/wind_climatology.csv alongside the DLL (M2) - loaded at runtime relative to the plugin's
+       own assembly location, so it has to live in the same folder. -->
   <Target Name="DeployPlugin" AfterTargets="Build">
     <ItemGroup>
       <DeployFiles Include="$(OutputPath)SailwindRealEarth.dll" />
+      <DeployData Include="$(MSBuildProjectDirectory)/../data/wind_climatology.csv" />
     </ItemGroup>
     <MakeDir Directories="$(SailwindDir)/BepInEx/plugins/SailwindRealEarth" />
     <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(SailwindDir)/BepInEx/plugins/SailwindRealEarth" />
+    <Copy SourceFiles="@(DeployData)" DestinationFolder="$(SailwindDir)/BepInEx/plugins/SailwindRealEarth" Condition="Exists('$(MSBuildProjectDirectory)/../data/wind_climatology.csv')" />
   </Target>
 
 </Project>

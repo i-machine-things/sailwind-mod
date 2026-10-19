@@ -49,6 +49,10 @@ namespace SailwindRealEarth
         internal static Vector3 ReposOffset =>
             new Vector3(ReposLonDeltaDeg.Value * UnitsPerDegree, 0f, ReposLatDeltaDeg.Value * UnitsPerDegree);
 
+        // M2: real historical wind direction, baked from Open-Meteo's archive API - see
+        // pipeline/bake_wind_climatology.py and CODING_NOTES.md.
+        internal static ConfigEntry<bool> HistoricalWindEnabled;
+
         private Harmony harmony;
         private bool overlayVisible = true;
 
@@ -72,6 +76,14 @@ namespace SailwindRealEarth
             ReposLatDeltaDeg = Config.Bind(
                 "RealEarth", "RepositionLatDeltaDeg", -8.35f,
                 "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
+            HistoricalWindEnabled = Config.Bind(
+                "RealEarth", "HistoricalWindEnabled", true,
+                "M2: replace Wind.GetCurrentTradeWind's fictional direction with the real "
+                + "historical-average prevailing wind direction for the player's current "
+                + "(shifted) lon/lat and the real-world current month, from a climatology grid "
+                + "baked offline by pipeline/bake_wind_climatology.py. Only overrides direction - "
+                + "magnitude/chaos/gusts/storms stay vanilla. No effect if "
+                + "BepInEx/plugins/SailwindRealEarth/wind_climatology.csv is missing.");
             // BorderExpander is a soft, not hard, dependency (see the class-level comment above
             // for why) - but if reposition is on and it's missing, the player WILL get stuck at
             // the vanilla world-border "out of game area" recovery the moment they sail near the
@@ -248,6 +260,50 @@ namespace SailwindRealEarth
             Plugin.Log.LogInfo(
                 $"[RealEarth][Survey] '{__instance.gameObject.name}' idx={__instance.islandIndex} " +
                 $"localPos={localPos} lon={globe.x:F3} lat={globe.z:F3}");
+        }
+    }
+
+    // M2: replaces the vanilla fictional trade-wind direction with a real historical-average
+    // one. Confirmed by decompiling Wind.cs: GetCurrentTradeWind is the *only* geography-
+    // dependent piece of the wind system - it returns a direction vector (not a full wind
+    // vector) from hardcoded lat/lon thresholds, which SetNewWindTarget then blends with a
+    // random direction, the previous wind's direction, and separately-computed magnitude/chaos/
+    // storm/coastal effects. Overriding only this method's __result therefore swaps in a real
+    // direction while leaving all of that existing variability/gameplay-feel logic untouched -
+    // exactly the surgical patch point the plan called for, not a guess.
+    [HarmonyPatch(typeof(Wind), "GetCurrentTradeWind")]
+    internal static class HistoricalWindDirectionPatch
+    {
+        private static void Postfix(ref Vector3 __result)
+        {
+            if (Plugin.HistoricalWindEnabled == null || !Plugin.HistoricalWindEnabled.Value)
+            {
+                return;
+            }
+
+            if (FloatingOriginManager.instance == null || Refs.observerMirror == null)
+            {
+                return;
+            }
+
+            WindClimatology.EnsureLoaded();
+            if (!WindClimatology.IsLoaded)
+            {
+                return;
+            }
+
+            // Same reference object the vanilla method itself already queries (Refs.observerMirror)
+            // - already shifted automatically by FloatingOriginOffsetPatch, no extra work needed.
+            Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+            int month = DateTime.Now.Month;
+
+            if (WindClimatology.TryGetWind(globe.x, globe.z, month, out float bearing, out float speedKn))
+            {
+                __result = WindClimatology.BearingToDirection(bearing);
+                Plugin.Log.LogInfo(
+                    $"[RealEarth][HistoricalWind] lon={globe.x:F2} lat={globe.z:F2} month={month} -> "
+                    + $"toward_bearing={bearing:F1}deg (climatology mean speed {speedKn:F1}kn, not yet applied)");
+            }
         }
     }
 }

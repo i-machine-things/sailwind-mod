@@ -227,7 +227,7 @@ same data and compute marker positions from each port's real lat/lon.
   correctly aligned automatically. Accepted a real mission in-game and
   confirmed the map/route pin render normally, no fallback needed.
 
-**M2 — Real wind, historical mode**
+**M2 — Real wind, historical mode (direction done, magnitude still vanilla)**
 - Decompiled the real wind architecture to confirm the actual patch target
   (not guessed): `Wind.GetCurrentTradeWind()` (private, returns a direction
   vector purely from `FloatingOriginManager.GetGlobeCoords` latitude/
@@ -237,26 +237,45 @@ same data and compute marker positions from each port's real lat/lon.
   `Wind.currentWind` and computes apparent wind from boat velocity, and
   `Weather.ApplyWeather` is purely visual (sky/cloud/rain blending). `Region`
   objects (trigger volumes) only control chaos/variability parameters
-  (`windChaos`/`windDirChaos`), orthogonal to direction - keep as-is.
+  (`windChaos`/`windDirChaos`), orthogonal to direction - keep as-is. ✅ Done.
 - **Data source: Open-Meteo's historical/archive API** (not ERA5/Copernicus
   CDS) - free, no account/API key needed, and the same provider M3 already
   planned to use for live data, so one integration covers both milestones.
+  ✅ Confirmed genuinely free/no-key live (a scraped pricing-page summary
+  claimed otherwise - a real 10-year test request returned HTTP 200 with
+  full data, trusted over the summary). Hit the free-tier's fractional
+  billing on long date ranges (429 on a 10-year x 20-location batch) -
+  scaled back to 3 years / 5-location batches with retry-backoff.
 - **Time mapping: real wall-clock date.** Vanilla Sailwind has no calendar/
   season system at all (`GameState.day` is just a day-counter since the save
   started, confirmed by decompiling `Sun.cs` - no month/season concept
   anywhere). Rather than invent an in-game calendar, whatever month it
   actually is in real life when you play picks the climatology month.
   Simplest option that needs no new systems; revisit if an in-game calendar
-  ever becomes worth building for its own sake.
+  ever becomes worth building for its own sake. ✅ Done (`DateTime.Now.Month`).
 - Build the pipeline step that bakes a monthly wind climatology grid from
-  Open-Meteo's historical API.
+  Open-Meteo's historical API. ✅ Done - `pipeline/bake_wind_climatology.py`,
+  220 grid points x 12 months, output `data/wind_climatology.csv`. Output
+  format is flat CSV, not JSON - the game's managed DLLs only have Unity's
+  `JsonUtility`, which can't deserialize a month-keyed dictionary schema.
 - Patch `Wind.GetCurrentTradeWind()` (Postfix, override `__result`) to return
   a direction derived from the climatology grid at the player's current
   (shifted) lat/lon and real-world current month, when historical mode is
   enabled - leaving `SetNewWindTarget`'s existing magnitude/chaos/gust
   blending intact so the organic variability gameplay feel is preserved.
+  ✅ Done and confirmed live: at the shifted Al'Ankh start position in
+  October, the patch returned a real climatology-derived toward-bearing of
+  263.3deg (mean speed 11.9kn) instead of the vanilla fictional band.
+  **Magnitude is not yet real** - only direction is overridden; the
+  climatology's `mean_speed_kn` is baked and loaded but not yet applied
+  anywhere, left for a future pass once direction is validated further.
 - Validate: sailing north/south through a known trade-wind latitude band
-  produces the expected real prevailing direction/strength.
+  produces the expected real prevailing direction/strength. Partially done -
+  spot-checked the baked grid against real subtropical trade-wind
+  expectations (lat 20-28N in the eastern Atlantic shows a SW/WSW-ish
+  "blowing toward" bearing, matching real NE trade winds) before even
+  building the C# side; broader in-game sailing validation across latitude
+  bands still open.
 
 **M3 — Real wind, live mode + toggle**
 - Add the live Open-Meteo-style backend and the config toggle between
