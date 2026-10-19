@@ -77,15 +77,25 @@ install_dep \
     ".ConfigurationManager.zip.tmp"
 
 # The ConfigurationManager release is a zip with the DLL nested at a fixed path inside it -
-# extract just that, then drop the downloaded zip itself (install_dep's checksum check still
-# ran against the whole zip above, so this extraction step is trusted).
+# extract just that. Extracts to a temp file first and only moves it into place once unzip
+# has actually succeeded (and produced non-empty output), so a failed/partial extraction can
+# never truncate or corrupt an existing good install - redirecting unzip's output straight at
+# the destination would truncate it immediately, before unzip could fail. Also keeps the
+# checksum-verified zip around afterward (instead of deleting it) so a later run can re-extract
+# without needing network access again. Caught by CodeRabbit (PR #3).
 if [ -f "$PLUGINS_DIR/.ConfigurationManager.zip.tmp" ]; then
     mkdir -p "$PLUGINS_DIR/ConfigurationManager"
-    unzip -p "$PLUGINS_DIR/.ConfigurationManager.zip.tmp" \
+    extract_tmp="$(mktemp)"
+    if unzip -p "$PLUGINS_DIR/.ConfigurationManager.zip.tmp" \
         "BepInEx/plugins/ConfigurationManager/ConfigurationManager.dll" \
-        > "$PLUGINS_DIR/ConfigurationManager/ConfigurationManager.dll"
-    rm "$PLUGINS_DIR/.ConfigurationManager.zip.tmp"
-    echo "ConfigurationManager: extracted DLL to $PLUGINS_DIR/ConfigurationManager/ConfigurationManager.dll"
+        > "$extract_tmp" && [ -s "$extract_tmp" ]; then
+        mv "$extract_tmp" "$PLUGINS_DIR/ConfigurationManager/ConfigurationManager.dll"
+        echo "ConfigurationManager: extracted DLL to $PLUGINS_DIR/ConfigurationManager/ConfigurationManager.dll"
+    else
+        echo "error: ConfigurationManager extraction failed - existing install (if any) left untouched" >&2
+        rm -f "$extract_tmp"
+        exit 1
+    fi
 fi
 
 echo

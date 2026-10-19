@@ -78,11 +78,12 @@ namespace SailwindRealEarth
                 "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
             HistoricalWindEnabled = Config.Bind(
                 "RealEarth", "HistoricalWindEnabled", true,
-                "M2: replace Wind.GetCurrentTradeWind's fictional direction with the real "
-                + "historical-average prevailing wind direction for the player's current "
-                + "(shifted) lon/lat and the real-world current month, from a climatology grid "
-                + "baked offline by pipeline/bake_wind_climatology.py. Only overrides direction - "
-                + "magnitude/chaos/gusts/storms stay vanilla. No effect if "
+                "M2: replace Wind.GetCurrentTradeWind's fictional direction, and "
+                + "Wind.SetNewWindTarget's base magnitude, with real historical-average values "
+                + "for the player's current (shifted) lon/lat and the real-world current month, "
+                + "from a climatology grid baked offline by pipeline/bake_wind_climatology.py. "
+                + "Magnitude is clamped to vanilla's own [minimumMagnitude, maximumMagnitude] "
+                + "range - chaos/gusts/storms still stay vanilla. No effect if "
                 + "BepInEx/plugins/SailwindRealEarth/wind_climatology.csv is missing.");
             // BorderExpander is a soft, not hard, dependency (see the class-level comment above
             // for why) - but if reposition is on and it's missing, the player WILL get stuck at
