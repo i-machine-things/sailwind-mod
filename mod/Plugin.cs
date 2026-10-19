@@ -7,6 +7,16 @@ using UnityEngine;
 
 namespace SailwindRealEarth
 {
+    // Soft dependency on NANDbrew/BorderExpander (com.nandbrew.borderexpander) - expands
+    // WorldBorder to +-70deg and handles east/west circumnavigation, which M1's shifted
+    // coordinates immediately need (confirmed live: vanilla WorldBorder's "out of game area"
+    // recovery fires once our shift puts the player outside its hardcoded authored bounds).
+    // Soft, not hard: our own patches don't call any BorderExpander API (yet - AddRegion is
+    // there for custom trade-wind regions if M2+ needs it), so the mod still loads and works,
+    // just bounded by vanilla's border, if BorderExpander isn't installed. SoftDependency only
+    // affects load order (BorderExpander first if both present), per the GUID confirmed by
+    // inspecting its DLL - see CODING_NOTES.md.
+    [BepInDependency("com.nandbrew.borderexpander", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     public class Plugin : BaseUnityPlugin
     {
