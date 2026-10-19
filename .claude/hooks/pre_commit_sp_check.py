@@ -20,9 +20,12 @@ def _is_git_commit_command(command: str) -> bool:
     except ValueError:
         return bool(re.search(r"git\s+commit", command))
 
-    try:
-        git_idx = next(i for i, t in enumerate(tokens) if t == "git" or t.endswith("/git"))
-    except StopIteration:
+    # Chained commands (git add . && git commit -m x) put a later "git" token after the first
+    # one, and shlex doesn't split on &&/;/| - so every "git" token needs checking, not just the
+    # first. Also match git.exe and backslash-style paths (Windows-compatible per this hook's own
+    # docstring), which the old `t.endswith("/git")` check missed. Caught by CodeRabbit.
+    git_idxs = [i for i, t in enumerate(tokens) if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE)]
+    if not git_idxs:
         return False
 
     # Options that consume the following token as an argument
@@ -31,15 +34,18 @@ def _is_git_commit_command(command: str) -> bool:
         "--work-tree", "--namespace", "--super-prefix",
         "--list-cmds",
     })
-    i = git_idx + 1
-    while i < len(tokens):
-        tok = tokens[i]
-        if tok in _ARG_OPTIONS:
-            i += 2
-        elif tok.startswith("-"):
-            i += 1
-        else:
-            return tok == "commit"
+    for git_idx in git_idxs:
+        i = git_idx + 1
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok in _ARG_OPTIONS:
+                i += 2
+            elif tok.startswith("-"):
+                i += 1
+            else:
+                if tok == "commit":
+                    return True
+                break
     return False
 
 

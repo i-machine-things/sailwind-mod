@@ -49,7 +49,7 @@ No exceptions.
 
 `.claude/CODING_NOTES.md` is a standards and practices reference — a log of coding patterns and past findings, grouped by topic, for *this* repo specifically. It is **not** the source of truth for PR review status.
 
-- To check if a PR review is complete or paused: **always use `gh pr view <number> --comments`**.
+- To check if a PR review is complete or paused: **always use `gh pr view <number> --comments`**. This shows general/issue-level comments only — it does **not** show inline review comments left on specific diff lines, which is exactly where CodeRabbit posts its actionable findings. Also fetch those with `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments`, or you can miss findings Rule 5 requires addressing.
 - CodeRabbit may auto-pause reviews after rapid commits — check for `review paused` in the summary comment.
 - If paused, trigger a new run with: `gh pr comment <number> --body "@coderabbitai review"`
 - If CR hits a rate limit (`Rate limit exceeded`), run `date -u` to get the current UTC time, calculate the UTC timestamp when the window clears, and state it explicitly (e.g. "clears at 05:04 UTC"). Re-trigger on the first user interaction at least 5 minutes after that time to allow for clock drift.
@@ -145,8 +145,12 @@ tags exist yet), so match `v*` explicitly and fall back to the repo's root commi
 
 ```bash
 last_tag="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || git rev-list --max-parents=0 master)"
-git log "$last_tag"..master --oneline
+git log "$last_tag"..master --format=%s
 ```
+
+`--format=%s` prints just the commit subject, with no hash prefix — `--oneline` prefixes every
+line with a hash, so a naive "lines starting with feat:" count against `--oneline` output would
+never match anything.
 
 Count by type:
 - Lines starting with `feat:` → feature count
