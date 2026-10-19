@@ -323,7 +323,7 @@ namespace SailwindRealEarth
     [HarmonyPatch(typeof(Wind), "GetCurrentTradeWind")]
     internal static class HistoricalWindDirectionPatch
     {
-        private static void Postfix(ref Vector3 __result)
+        private static void Postfix(Wind __instance, ref Vector3 __result)
         {
             if (Plugin.HistoricalWindEnabled == null || !Plugin.HistoricalWindEnabled.Value)
             {
@@ -349,9 +349,71 @@ namespace SailwindRealEarth
             if (WindClimatology.TryGetWind(globe.x, globe.z, month, out float bearing, out float speedKn))
             {
                 __result = WindClimatology.BearingToDirection(bearing);
+                // Logging minimumMagnitude/maximumMagnitude here too - Inspector-configured
+                // fields, not visible from decompiled code alone - to calibrate a real
+                // knots-to-game-units conversion for the still-open "apply real magnitude" M2
+                // item, rather than guessing a scale factor blind.
                 Plugin.Log.LogInfo(
                     $"[RealEarth][HistoricalWind] lon={globe.x:F2} lat={globe.z:F2} month={month} -> "
-                    + $"toward_bearing={bearing:F1}deg (climatology mean speed {speedKn:F1}kn, not yet applied)");
+                    + $"toward_bearing={bearing:F1}deg, mean speed {speedKn:F1}kn "
+                    + $"| vanilla magnitude range [{__instance.minimumMagnitude:F2}, {__instance.maximumMagnitude:F2}]");
+            }
+        }
+    }
+
+    // M2 magnitude: applies the climatology's real mean wind speed, not just direction.
+    // Confirmed live (F6-forced recalculation, logged alongside HistoricalWindDirectionPatch
+    // above): vanilla's own minimumMagnitude/maximumMagnitude are [0, 18], and our baked grid's
+    // mean_speed_kn ranges 2.79-21.85 (mean 11.9) across all 220 points/12 months - close enough
+    // to a 1:1 correspondence that the devs' magnitude units are plausibly already "roughly
+    // knots". Uses the climatology speed directly (clamped to vanilla's own range, so it can
+    // never exceed what the game was tuned/tested for) rather than inventing an unjustified
+    // scale factor.
+    //
+    // SetNewWindTarget is private, and the field we need to rescale (currentWindTarget) is
+    // private too - Harmony's "___fieldName" Postfix parameter convention gives ref access to
+    // it. Postfix (not Prefix) so this runs after the vanilla method (and
+    // HistoricalWindDirectionPatch, which patches a method SetNewWindTarget calls internally)
+    // have already set the target's direction - this only rescales magnitude, direction is
+    // untouched.
+    [HarmonyPatch(typeof(Wind), "SetNewWindTarget")]
+    internal static class HistoricalWindMagnitudePatch
+    {
+        private static void Postfix(Wind __instance, ref Vector3 ___currentWindTarget)
+        {
+            if (Plugin.HistoricalWindEnabled == null || !Plugin.HistoricalWindEnabled.Value)
+            {
+                return;
+            }
+
+            if (FloatingOriginManager.instance == null || Refs.observerMirror == null)
+            {
+                return;
+            }
+
+            WindClimatology.EnsureLoaded();
+            if (!WindClimatology.IsLoaded)
+            {
+                return;
+            }
+
+            if (___currentWindTarget.sqrMagnitude < 0.0001f)
+            {
+                // No direction to rescale (shouldn't normally happen - direction is set earlier
+                // in the same method call via GetCurrentTradeWind/blending) - skip rather than
+                // risk dividing by ~zero in .normalized.
+                return;
+            }
+
+            Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+            int month = DateTime.Now.Month;
+
+            if (WindClimatology.TryGetWind(globe.x, globe.z, month, out _, out float speedKn))
+            {
+                float magnitude = Mathf.Clamp(speedKn, __instance.minimumMagnitude, __instance.maximumMagnitude);
+                ___currentWindTarget = ___currentWindTarget.normalized * magnitude;
+                Plugin.Log.LogInfo($"[RealEarth][HistoricalWind] applied magnitude {magnitude:F2} "
+                    + $"(climatology {speedKn:F1}kn, clamped to vanilla range).");
             }
         }
     }

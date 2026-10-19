@@ -227,7 +227,7 @@ same data and compute marker positions from each port's real lat/lon.
   correctly aligned automatically. Accepted a real mission in-game and
   confirmed the map/route pin render normally, no fallback needed.
 
-**M2 — Real wind, historical mode (direction done, magnitude still vanilla)**
+**M2 — Real wind, historical mode (direction + magnitude done)**
 - Decompiled the real wind architecture to confirm the actual patch target
   (not guessed): `Wind.GetCurrentTradeWind()` (private, returns a direction
   vector purely from `FloatingOriginManager.GetGlobeCoords` latitude/
@@ -266,16 +266,34 @@ same data and compute marker positions from each port's real lat/lon.
   ✅ Done and confirmed live: at the shifted Al'Ankh start position in
   October, the patch returned a real climatology-derived toward-bearing of
   263.3deg (mean speed 11.9kn) instead of the vanilla fictional band.
-  **Magnitude is not yet real** - only direction is overridden; the
-  climatology's `mean_speed_kn` is baked and loaded but not yet applied
-  anywhere, left for a future pass once direction is validated further.
+- **Magnitude**: also done, not left vanilla as originally planned. Logged
+  `Wind.minimumMagnitude`/`maximumMagnitude` live (Inspector-configured,
+  not visible from decompiling alone) and found them to be `[0, 18]` -
+  close enough to our baked grid's real mean_speed_kn range (2.79-21.85,
+  mean 11.9 across all 220 points/12 months) to treat the game's magnitude
+  units as plausibly already "roughly knots", rather than inventing an
+  unjustified scale factor. A second patch on `Wind.SetNewWindTarget`
+  (Postfix, rescales the private `currentWindTarget` field via Harmony's
+  `___fieldName` convention) applies the climatology speed directly,
+  clamped to vanilla's own range. Confirmed live: applied magnitude 11.88
+  for a climatology value of 11.9kn.
+- A debug-only F6 (forces `Wind.debugChangeWind`, an existing vanilla debug
+  hook, to get an immediate `SetNewWindTarget` recalculation on demand) and
+  F7 (forces an obvious several-times-normal test gust via the existing
+  `Wind.ForceNewWind`, in the real climatology direction) were added after
+  live testing showed the organic timer-paced/subtle nature of normal wind
+  changes made the feature hard to validate by eye alone. F10 was tried
+  first for the recalculation key but turned out to already be bound to
+  vanilla's own pause/escape menu - moved both off the F9-F12 block
+  entirely.
 - Validate: sailing north/south through a known trade-wind latitude band
   produces the expected real prevailing direction/strength. Partially done -
   spot-checked the baked grid against real subtropical trade-wind
   expectations (lat 20-28N in the eastern Atlantic shows a SW/WSW-ish
   "blowing toward" bearing, matching real NE trade winds) before even
-  building the C# side; broader in-game sailing validation across latitude
-  bands still open.
+  building the C# side, and confirmed live at the current position; broader
+  in-game sailing validation across latitude bands (actually traveling a
+  meaningful distance, not just spot-checking one location) still open.
 
 **M3 — Real wind, live mode + toggle**
 - Add the live Open-Meteo-style backend and the config toggle between

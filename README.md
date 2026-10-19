@@ -23,13 +23,15 @@ file is a snapshot of what currently works.
   vanilla's "out of game area" recovery the moment you sail near the shifted coordinates (the mod
   logs a warning on startup if this is missing). See `.claude/CODING_NOTES.md` for the exact
   install steps.
-- **M2 — real wind, historical mode**: direction only, in progress. `Wind.GetCurrentTradeWind()`
-  (the one real geography-dependent hook in the wind system) is patched to return a real
-  historical-average prevailing wind direction instead of the vanilla fictional trade-wind bands,
-  for the player's current (shifted) lon/lat and the real-world current month. Sourced from
-  Open-Meteo's free historical/archive API, baked offline into `data/wind_climatology.csv` by
-  `pipeline/bake_wind_climatology.py`. Magnitude/chaos/gusts/storms are still vanilla - only the
-  prevailing direction is real. Confirmed live.
+- **M2 — real wind, historical mode**: done. `Wind.GetCurrentTradeWind()` (the one real
+  geography-dependent hook in the wind system) is patched to return a real historical-average
+  prevailing wind direction instead of the vanilla fictional trade-wind bands, and
+  `Wind.SetNewWindTarget()` is patched to apply the climatology's real mean wind speed too
+  (clamped to vanilla's own magnitude range), for the player's current (shifted) lon/lat and the
+  real-world current month. Chaos/gusts/storms are still vanilla - direction and base magnitude
+  are real. Sourced from Open-Meteo's free historical/archive API, baked offline into
+  `data/wind_climatology.csv` by `pipeline/bake_wind_climatology.py`. Confirmed live, including
+  with an obvious forced test gust (F7, debug-only) in the real computed direction.
 - **M3+ (live wind, real terrain, navigation)**: not started.
 
 ## How it works
