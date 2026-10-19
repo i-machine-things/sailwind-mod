@@ -49,21 +49,26 @@ def _is_git_commit_command(command: str) -> bool:
     # regardless of whether it was actually being run. Caught by CodeRabbit (PR #2), third pass.
     _SEPARATORS = frozenset({"&&", "||", ";", "&", "|"})
     _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+    # Shell/POSIX constructs that run a command without changing what that command actually
+    # is, for the purposes of this check (git is still "the command" through any of these).
+    # Started as one-off fixes for "env" alone (CodeRabbit, PR #2, seventh pass) then "command"
+    # (eighth pass) - generalized to a small set covering the common ones at once, rather than
+    # fixing this one wrapper at a time as each gets individually flagged. Deliberately leaves
+    # out things like "xargs" that build a command dynamically rather than simply prefixing it.
+    _TRANSPARENT_WRAPPERS = frozenset({"env", "command", "exec", "sudo", "nice", "nohup", "time"})
 
     def _is_command_position(idx: int) -> bool:
         # Walk backward past any leading VAR=value assignments (e.g. "GIT_TRACE=1 git commit"
         # is a real, valid way to invoke git - the env assignment doesn't change what the
-        # actual command is). Caught by CodeRabbit (PR #2), sixth pass. Also walk past a bare
-        # "env" token (e.g. "env git commit", or "env FOO=bar git commit" - env's own
-        # VAR=value arguments are already handled by the assignment check above) - same idea,
-        # a different real wrapper that doesn't change what the actual command is. Caught by
-        # CodeRabbit (PR #2), seventh pass.
+        # actual command is) and past any transparent wrapper token (e.g. "env git commit",
+        # "command git commit" - env's/command's own VAR=value arguments are already handled
+        # by the assignment check). Caught by CodeRabbit (PR #2), sixth/seventh/eighth passes.
         j = idx - 1
         while j >= 0:
             prev = tokens[j]
             if prev in _SEPARATORS:
                 return True
-            if _ENV_ASSIGNMENT.match(prev) or prev == "env":
+            if _ENV_ASSIGNMENT.match(prev) or prev in _TRANSPARENT_WRAPPERS:
                 j -= 1
                 continue
             return False
