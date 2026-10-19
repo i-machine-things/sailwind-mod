@@ -20,8 +20,10 @@ def _is_git_commit_command(command: str) -> bool:
     # ['git', 'add', '.&&git', 'commit', ...], the '&&' swallowed into '.&&git') - which hid a
     # later "git" from the token scan below even after an earlier fix for the spaced case.
     # Caught by CodeRabbit (PR #2) with a direct repro. Padding operators with spaces first
-    # guarantees they always end up as their own token, regardless of original spacing.
-    command = re.sub(r"(&&|\|\||[;|])", r" \1 ", command)
+    # guarantees they always end up as their own token, regardless of original spacing. Single
+    # "&" (background/separator, distinct from "&&") was missing from this list too - also
+    # caught by CodeRabbit, same PR, second pass.
+    command = re.sub(r"(&&|\|\||[;&|])", r" \1 ", command)
 
     try:
         tokens = shlex.split(command, posix=True)

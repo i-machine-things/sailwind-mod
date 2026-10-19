@@ -317,6 +317,5 @@ and becomes another generated artifact of the same real-geography pipeline.
 
 ## Next step
 
-Once this plan is approved, M0 starts with setting up
-`~/code/sailwind-mod/`, installing BepInEx into the Proton prefix, and
-decompiling `Assembly-CSharp.dll` to confirm exact patch targets.
+M0 and M1 are both done (see their sections above). M2 (real wind,
+historical mode) is next.
