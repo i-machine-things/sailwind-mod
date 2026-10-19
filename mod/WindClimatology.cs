@@ -74,12 +74,25 @@ namespace SailwindRealEarth
                     continue;
                 }
 
-                loaded.Add(new GridPoint(
-                    float.Parse(parts[0], CultureInfo.InvariantCulture),
-                    float.Parse(parts[1], CultureInfo.InvariantCulture),
-                    int.Parse(parts[2], CultureInfo.InvariantCulture),
-                    float.Parse(parts[3], CultureInfo.InvariantCulture),
-                    float.Parse(parts[4], CultureInfo.InvariantCulture)));
+                // float.Parse/int.Parse throw on malformed data, with nothing upstream to catch
+                // it - EnsureLoaded runs from inside Harmony postfixes on the wind patches, so an
+                // unhandled exception here could disrupt a live wind recalculation instead of
+                // just cleanly disabling historical wind. Caught by CodeRabbit (PR #3). Treats
+                // ANY malformed row as reason to abandon the whole load (not just skip that row)
+                // - partial/inconsistent climatology data is arguably worse than none.
+                if (!float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float lat)
+                    || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float lon)
+                    || !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int month)
+                    || !float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float bearing)
+                    || !float.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out float speedKn))
+                {
+                    Plugin.Log.LogWarning(
+                        $"[RealEarth] Invalid wind climatology row {i} in {csvPath} - historical "
+                        + "wind disabled (vanilla behavior preserved).");
+                    return;
+                }
+
+                loaded.Add(new GridPoint(lat, lon, month, bearing, speedKn));
             }
 
             points = loaded;

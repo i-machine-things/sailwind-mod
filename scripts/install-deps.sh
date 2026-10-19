@@ -82,10 +82,14 @@ install_dep \
 # never truncate or corrupt an existing good install - redirecting unzip's output straight at
 # the destination would truncate it immediately, before unzip could fail. Also keeps the
 # checksum-verified zip around afterward (instead of deleting it) so a later run can re-extract
-# without needing network access again. Caught by CodeRabbit (PR #3).
+# without needing network access again. Caught by CodeRabbit (PR #3). The temp file is created
+# inside the same destination directory (not the system tmp dir, which is commonly a different
+# filesystem/tmpfs) so the final "mv" is an atomic same-filesystem rename, not a cross-
+# filesystem copy-then-delete that could itself leave a partial file on interruption - also
+# caught by CodeRabbit (PR #3), same finding's own follow-up.
 if [ -f "$PLUGINS_DIR/.ConfigurationManager.zip.tmp" ]; then
     mkdir -p "$PLUGINS_DIR/ConfigurationManager"
-    extract_tmp="$(mktemp)"
+    extract_tmp="$(mktemp "$PLUGINS_DIR/ConfigurationManager/.ConfigurationManager.dll.XXXXXX")"
     if unzip -p "$PLUGINS_DIR/.ConfigurationManager.zip.tmp" \
         "BepInEx/plugins/ConfigurationManager/ConfigurationManager.dll" \
         > "$extract_tmp" && [ -s "$extract_tmp" ]; then
