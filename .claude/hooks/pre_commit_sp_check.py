@@ -34,7 +34,17 @@ def _is_git_commit_command(command: str) -> bool:
     # one - so every "git" token needs checking, not just the first. Also match git.exe and
     # backslash-style paths (Windows-compatible per this hook's own docstring), which the old
     # `t.endswith("/git")` check missed. Caught by CodeRabbit.
-    git_idxs = [i for i, t in enumerate(tokens) if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE)]
+    #
+    # Only count a "git"-like token in COMMAND position (index 0, or right after a separator) -
+    # otherwise "echo git commit" (just text passed to echo, never actually invoking git) was a
+    # false positive, since "git" appeared somewhere in the token stream regardless of whether
+    # it was actually being run. Caught by CodeRabbit (PR #2), third pass.
+    _SEPARATORS = frozenset({"&&", "||", ";", "&", "|"})
+    git_idxs = [
+        i for i, t in enumerate(tokens)
+        if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE)
+        and (i == 0 or tokens[i - 1] in _SEPARATORS)
+    ]
     if not git_idxs:
         return False
 

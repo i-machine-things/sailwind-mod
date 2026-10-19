@@ -132,23 +132,25 @@ be kept in sync? Decompiling `MapChart.cs`, `MapChartTextureRenderer.cs`, and
   hit this exact problem and worked around it by force-disabling the renderer
   entirely (Harmony postfix on `MissionDetailsUI.UpdateMap`, same technique).
 
-**Decision for this mod:** in M1 (repositioning existing islands, no new art
-yet), do the same as `scrambled-seas` — force the vanilla "(map unavailable)"
-fallback for any mission whose ports we've moved, rather than show a
-misleadingly-stale pin. This is a stopgap, not the real fix. The real fix
-belongs with the terrain milestones (M4/M5): once we're generating real
-coastline art for a region anyway, generate the mission-briefing map texture
-from the same real data and compute `oceanMapLocation`/`localMapLocation`
-marker positions directly from each port's real lat/lon projected into that
-texture's space — at that point this map stops being hand-painted-and-stale
-and becomes another generated artifact of the same real-geography pipeline.
+**Original plan for this mod (superseded - see M1 below):** force the vanilla
+"(map unavailable)" fallback, same technique as `scrambled-seas`, for any
+mission whose ports we've moved. This assumed M1 would physically reposition
+islands, which would desync their hand-authored map markers. M1's actual
+approach (relabeling coordinates via `outCurrentOffset`, not moving anything)
+never desyncs those markers in the first place, so this fallback turned out
+to be unnecessary - confirmed live, see M1's checklist. The real fix for
+*actually new* terrain still belongs with M4/M5: once real coastline art is
+being generated anyway, generate the mission-briefing map texture from the
+same data and compute marker positions from each port's real lat/lon.
 
 ## Architecture
 
 1. **Mod harness**: BepInEx 5 (Mono x64) dropped into the Sailwind install,
-   loading a single C# plugin DLL built with Harmony patches, with a soft/
-   hard dependency on `BorderExpander` (for world-border expansion and
-   circumnavigation — no need to reimplement). New project at
+   loading a single C# plugin DLL built with Harmony patches, with a soft
+   dependency on `BorderExpander` (for world-border expansion and
+   circumnavigation — no need to reimplement; soft, not hard, so the mod
+   still loads without it, just bounded by vanilla's border - see M1).
+   New project at
    `~/code/sailwind-mod/` (its own git repo), containing:
    - `mod/` — the C# BepInEx plugin (patches, runtime logic)
    - `pipeline/` — offline Python/GDAL tooling that preprocesses public
