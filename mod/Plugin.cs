@@ -115,7 +115,8 @@ namespace SailwindRealEarth
 
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
-            Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay");
+            Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay, "
+                + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust");
         }
 
         private static bool IsBorderExpanderFreeSailingEnabled()
@@ -132,6 +133,54 @@ namespace SailwindRealEarth
             if (Input.GetKeyDown(KeyCode.F9))
             {
                 overlayVisible = !overlayVisible;
+            }
+
+            // Wind.SetNewWindTarget only runs on its own internal timer (unknown exact
+            // interval - Inspector-configured, not visible from decompiled code alone), which
+            // made testing HistoricalWindEnabled's on/off difference impractical: toggling it
+            // and immediately comparing just shows whatever wind value was already computed
+            // before the toggle, since nothing forces a recalculation. Wind.debugChangeWind is
+            // the game's own existing debug hook for this (confirmed in Wind.Update: setting it
+            // zeroes the internal timer, forcing SetNewWindTarget to run again immediately) -
+            // F6 exposes it so the toggle is actually testable on demand. Originally bound to
+            // F10, but that's already wired to vanilla's own pause/escape menu - confirmed live
+            // (pressing it opened the esc menu instead of just logging), moved off the F9-F12
+            // range entirely to dodge any other undocumented vanilla bindings in that block.
+            if (Input.GetKeyDown(KeyCode.F6) && Wind.instance != null)
+            {
+                Wind.instance.debugChangeWind = true;
+                Log.LogInfo("[RealEarth] F6: forced an immediate Wind.SetNewWindTarget recalculation.");
+            }
+
+            // F6 proved the direction toggle works correctly via log lines, but a direction-only
+            // change within vanilla's normal gameplay magnitude range (currentWind started at
+            // ~9 units) is genuinely hard to feel/see at the dock over a short window - raised
+            // directly by live testing ("not seeing any difference in-game"). This forces an
+            // obvious, unmistakable gust using the game's own existing public debug hook
+            // (Wind.ForceNewWind, confirmed in Wind.cs: sets currentWind/currentBaseWind directly
+            // and re-triggers target/gust calculation) at several times normal magnitude, in the
+            // SAME direction our climatology patch computes - so it's both a magnitude sanity
+            // check and a visible demonstration of the real direction, not a separate fake test.
+            if (Input.GetKeyDown(KeyCode.F7) && Wind.instance != null)
+            {
+                Vector3 direction = Wind.currentWind.sqrMagnitude > 0.0001f
+                    ? Wind.currentWind.normalized
+                    : Vector3.forward;
+
+                if (FloatingOriginManager.instance != null && Refs.observerMirror != null)
+                {
+                    WindClimatology.EnsureLoaded();
+                    Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+                    if (WindClimatology.TryGetWind(globe.x, globe.z, DateTime.Now.Month, out float bearing, out _))
+                    {
+                        direction = WindClimatology.BearingToDirection(bearing);
+                    }
+                }
+
+                const float GaleMagnitude = 60f;
+                Wind.instance.ForceNewWind(direction * GaleMagnitude);
+                Log.LogInfo($"[RealEarth] F7: forced an obvious test gust, direction={direction} magnitude={GaleMagnitude} "
+                    + "(several times normal - for visibility, not a realistic value).");
             }
         }
 
