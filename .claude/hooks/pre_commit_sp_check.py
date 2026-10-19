@@ -23,6 +23,14 @@ def _is_git_commit_command(command: str) -> bool:
     # guarantees they always end up as their own token, regardless of original spacing. Single
     # "&" (background/separator, distinct from "&&") was missing from this list too - also
     # caught by CodeRabbit, same PR, second pass.
+    # A raw newline is itself a shell command separator (same as ";"), but shlex treats it as
+    # plain whitespace - it just vanishes during tokenization rather than surviving as a token
+    # we could check against _SEPARATORS below, so "echo hi\ngit commit" lost the separator
+    # entirely and the "git" on the second line was no longer in command position. Caught by
+    # CodeRabbit (PR #2), fourth pass. Converting it to ";" first gives it a token that
+    # survives, the same (acknowledged, not quote-aware) way the operators below are handled -
+    # not a new limitation, just applying the existing one consistently.
+    command = command.replace("\n", " ; ")
     command = re.sub(r"(&&|\|\||[;&|])", r" \1 ", command)
 
     try:

@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Bootstrap;
@@ -77,19 +78,41 @@ namespace SailwindRealEarth
             // shifted coordinates, with no indication why. Confirmed live before BorderExpander
             // was installed. A loud startup warning is cheap insurance against that silent trap -
             // flagged by CodeRabbit (PR #1) as a real gap in the soft-dependency design.
-            if (RepositionEnabled.Value && !Chainloader.PluginInfos.ContainsKey("com.nandbrew.borderexpander"))
+            // Originally only checked whether BorderExpander was loaded at all - missed the case
+            // where it's installed but its own "Free Sailing" setting is still off (default
+            // false), which hits the exact same stuck-at-border trap silently. Caught by
+            // CodeRabbit (PR #2), fifth pass. Reads the live config value via reflection (no
+            // direct assembly reference - don't want a hard build dependency on a third-party
+            // mod) rather than just inferring it from "is the plugin loaded".
+            if (RepositionEnabled.Value)
             {
-                Log.LogWarning(
-                    "[RealEarth] RepositionIslands is enabled but BorderExpander "
-                    + "(com.nandbrew.borderexpander) isn't loaded - sailing near the shifted "
-                    + "coordinates will likely trigger vanilla WorldBorder's \"out of game area\" "
-                    + "recovery and bounce you back to the dock. Install BorderExpander and enable "
-                    + "its \"Free Sailing\" setting - see CODING_NOTES.md.");
+                bool borderExpanderLoaded = Chainloader.PluginInfos.ContainsKey("com.nandbrew.borderexpander");
+                if (!borderExpanderLoaded || !IsBorderExpanderFreeSailingEnabled())
+                {
+                    Log.LogWarning(
+                        "[RealEarth] RepositionIslands is enabled but "
+                        + (borderExpanderLoaded
+                            ? "BorderExpander's \"Free Sailing\" setting is off"
+                            : "BorderExpander (com.nandbrew.borderexpander) isn't loaded")
+                        + " - sailing near the shifted coordinates will likely trigger vanilla "
+                        + "WorldBorder's \"out of game area\" recovery and bounce you back to the "
+                        + "dock. Install BorderExpander and enable its \"Free Sailing\" setting - "
+                        + "see CODING_NOTES.md.");
+                }
             }
 
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay");
+        }
+
+        private static bool IsBorderExpanderFreeSailingEnabled()
+        {
+            Type beType = Type.GetType("BorderExpander.Plugin, BorderExpander");
+            FieldInfo field = beType?.GetField("freeSail", BindingFlags.NonPublic | BindingFlags.Static);
+            object configEntry = field?.GetValue(null);
+            object value = configEntry?.GetType().GetProperty("Value")?.GetValue(configEntry);
+            return value is bool enabled && enabled;
         }
 
         private void Update()
