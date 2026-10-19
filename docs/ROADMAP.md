@@ -359,5 +359,9 @@ same data and compute marker positions from each port's real lat/lon.
 
 ## Next step
 
-M0 and M1 are both done (see their sections above). M2 (real wind,
-historical mode) is next.
+M0 and M1 are both done (see their sections above). M2 is in progress:
+direction and magnitude are both real and confirmed live; what's left is
+broader in-game validation across latitude bands (actually sailing a
+meaningful distance, not just spot-checking one location) and expanding
+the baked wind climatology grid's coverage beyond the current Atlantic-only
+bounding box.

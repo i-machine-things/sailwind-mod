@@ -116,7 +116,8 @@ namespace SailwindRealEarth
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay, "
-                + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust");
+                + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust, "
+                + "F8 logs BorderExpander's live border-limit state");
         }
 
         private static bool IsBorderExpanderFreeSailingEnabled()
@@ -182,6 +183,48 @@ namespace SailwindRealEarth
                 Log.LogInfo($"[RealEarth] F7: forced an obvious test gust, direction={direction} magnitude={GaleMagnitude} "
                     + "(several times normal - for visibility, not a realistic value).");
             }
+
+            // Diagnostic for the "recovery cascade at extreme offsets" investigation - after
+            // repositioning to 46N/123W, a large outCurrentOffset drift was observed alongside a
+            // 2000+-call Shift() burst, matching Recovery.worldBorder (confirmed via decompiling
+            // Recovery.cs: DoRecoverPlayer raw-teleports Refs.observerMirror.transform.position
+            // to the last visited port, which - since we never move raw positions ourselves -
+            // retriggers FloatingOriginManager's own auto-shift). BorderExpander's own
+            // WorldBorderPatch should set eastLimit/westLimit to +-Infinity when Free Sailing is
+            // on, which shouldn't flag any finite longitude - reading its actual live field
+            // values via reflection (no direct assembly reference - don't want a hard build
+            // dependency on a third-party mod) rather than guessing why it fired anyway.
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                LogBorderExpanderState();
+            }
+        }
+
+        private static void LogBorderExpanderState()
+        {
+            Type beType = Type.GetType("BorderExpander.Plugin, BorderExpander");
+            if (beType == null)
+            {
+                Log.LogInfo("[RealEarth] F8: BorderExpander.Plugin type not found (not loaded?).");
+                return;
+            }
+
+            object GetStatic(string name)
+            {
+                FieldInfo f = beType.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                return f?.GetValue(null);
+            }
+
+            object freeSailEntry = GetStatic("freeSail");
+            object freeSailValue = freeSailEntry?.GetType().GetProperty("Value")?.GetValue(freeSailEntry);
+            object initialized = GetStatic("initialized");
+            object north = GetStatic("northLimit");
+            object south = GetStatic("southLimit");
+            object east = GetStatic("eastLimit");
+            object west = GetStatic("westLimit");
+
+            Log.LogInfo($"[RealEarth] F8: BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
+                + $"limits N={north} S={south} E={east} W={west}");
         }
 
         private void OnGUI()
