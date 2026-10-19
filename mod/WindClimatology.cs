@@ -84,7 +84,17 @@ namespace SailwindRealEarth
                     || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float lon)
                     || !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int month)
                     || !float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float bearing)
-                    || !float.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out float speedKn))
+                    || !float.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out float speedKn)
+                    // TryParse accepts the literal text "NaN"/"Infinity"/"-Infinity" as a
+                    // successful parse by default - a row containing one of those strings would
+                    // otherwise sail through here and hand a non-finite value to
+                    // BearingToDirection (Mathf.Sin(NaN) etc.), silently corrupting the wind
+                    // vector instead of being caught as invalid. Caught by CodeRabbit (PR #3).
+                    // float.IsFinite doesn't exist on this project's net472 target (added in
+                    // .NET Core 2.1/.NET Standard 2.1) - IsNaN/IsInfinity do, and together cover
+                    // the same cases.
+                    || float.IsNaN(bearing) || float.IsInfinity(bearing)
+                    || float.IsNaN(speedKn) || float.IsInfinity(speedKn))
                 {
                     Plugin.Log.LogWarning(
                         $"[RealEarth] Invalid wind climatology row {i} in {csvPath} - historical "
