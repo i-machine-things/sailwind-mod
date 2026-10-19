@@ -96,7 +96,7 @@ namespace SailwindRealEarth
     {
         private static float lastLogTime = -999f;
 
-        private static void Postfix(Transform __0, ref Vector3 __result)
+        private static void Postfix(FloatingOriginManager __instance, Transform __0, ref Vector3 __result)
         {
             Plugin.HasCoords = true;
             Plugin.LastLon = __result.x;
@@ -109,60 +109,95 @@ namespace SailwindRealEarth
             }
 
             lastLogTime = Time.time;
-            Plugin.Log.LogInfo($"[RealEarth] GetGlobeCoords({Plugin.LastObserved}) -> lon={__result.x:F3} lat={__result.z:F3}");
+            string shifterName = __instance.shifterObject != null ? __instance.shifterObject.name : "null";
+            Plugin.Log.LogInfo(
+                $"[RealEarth] GetGlobeCoords({Plugin.LastObserved}) -> lon={__result.x:F3} lat={__result.z:F3} | "
+                + $"outCurrentOffset={__instance.outCurrentOffset} shiftDistance={__instance.shiftDistance} "
+                + $"shifterObject={shifterName} shifterPos={(__instance.shifterObject != null ? __instance.shifterObject.position : Vector3.zero)}");
+        }
+    }
+
+    // Diagnostic: counts/logs every real call to the engine's own private Shift(x,z) method -
+    // the thing FloatingOriginManager.Update() calls automatically, in a tight while loop, any
+    // time shifterObject's raw position exceeds shiftDistance. This is what caught the actual
+    // root cause of the M1 reposition freeze/crash: teleporting the player's raw position
+    // ~290000 units past shiftDistance (confirmed 512 units) in one shot sent this auto-shift
+    // loop into a runaway - 28000+ calls in a single burst, outCurrentOffset ballooning to 10.8
+    // million (~37x past the intended offset) before reversing direction, matching the in-game
+    // view rendering the world as a shrinking planet seen from outside its own skybox, ending in
+    // an actual process crash (confirmed live via screenshots + the "EARLY ACCESS" splash
+    // reappearing, meaning Unity restarted, not just froze). Left in place as an ongoing safety
+    // net - in normal play (and with FloatingOriginOffsetPatch below, which never moves any raw
+    // position) this should stay near zero.
+    [HarmonyPatch(typeof(FloatingOriginManager), "Shift")]
+    internal static class ShiftCallDiagnosticPatch
+    {
+        private static int callCount;
+
+        private static void Prefix(int __0, int __1, FloatingOriginManager __instance)
+        {
+            callCount++;
+            if (callCount <= 20 || callCount % 200 == 0)
+            {
+                Plugin.Log.LogInfo(
+                    $"[RealEarth][ShiftCall] #{callCount} x={__0} z={__1} "
+                    + $"outCurrentOffset(before)={__instance.outCurrentOffset}");
+            }
+        }
+    }
+
+    // The actual M1 "reposition" mechanism. Earlier attempts physically moved islands, the
+    // player's start position, and the starter set's transform by Plugin.ReposOffset - all
+    // reverted (see git history / CODING_NOTES.md "Floating origin") after live-testing showed
+    // moving the player's raw position triggers the runaway described on ShiftCallDiagnosticPatch
+    // above. This replaces all of that: GetGlobeCoords is purely
+    // (pos - outCurrentOffset - globeOffset) / 9000, so offsetting outCurrentOffset once, right
+    // after FloatingOriginManager.Start() resets it to (0,0,0), relabels every object's reported
+    // lon/lat uniformly WITHOUT moving a single Transform. The player, islands, and starter set
+    // all stay exactly where vanilla puts them relative to each other (so no more "phantom dock"
+    // mismatch either - that was a symptom of physically moving islands away from an unmoved
+    // boat/player, which can no longer happen since nothing physically moves), and the player's
+    // raw position never leaves the safe zone near origin, so the engine's auto-shift logic never
+    // has a reason to fire.
+    //
+    // Note: the "confirmed-safe" raw-distance ceiling documented in CODING_NOTES.md was about
+    // physically moving objects, which this approach no longer does - but larger offsets (e.g.
+    // the original -64.4/-16.7 Caribbean target) haven't been empirically retested under this new
+    // approach yet, so the config default stays conservative for now.
+    [HarmonyPatch(typeof(FloatingOriginManager), "Start")]
+    internal static class FloatingOriginOffsetPatch
+    {
+        private static void Postfix(FloatingOriginManager __instance)
+        {
+            if (Plugin.RepositionEnabled == null || !Plugin.RepositionEnabled.Value)
+            {
+                return;
+            }
+
+            __instance.outCurrentOffset = -Plugin.ReposOffset;
+            Plugin.Log.LogInfo(
+                $"[RealEarth] Set outCurrentOffset={__instance.outCurrentOffset} to relabel the "
+                + "world's coordinates - no objects moved.");
         }
     }
 
     // M1 step 1 (survey): logs every vanilla island's name, index, and real lat/lon at load
     // time, same capture point scrambled-seas used (IslandHorizon.Start). Verified in-game -
-    // see data/vanilla_island_survey.json.
-    //
-    // M1 step 2 (reposition): moves each island by Plugin.ReposOffset so the whole
-    // archipelago keeps its relative shape but lands on different real-world coordinates.
-    // Goes through FloatingOriginManager's ShiftingPosToRealPos/RealPosToShiftingPos round
-    // trip - the same conversion BorderExpander's circumnavigation code uses for large moves
-    // - rather than a raw Transform.Translate. NOTE: per decompiling FloatingOriginManager
-    // itself, outCurrentOffset is still (0,0,0) at world-load time (it only becomes nonzero
-    // after the game's own Shift() has fired at least once), so this round trip is
-    // mathematically a no-op *right now* and is NOT expected to be what fixes the freeze by
-    // itself - it's here because it's the technically correct pattern (matches how the rest
-    // of the ecosystem does large moves, and stays correct if this ever runs after a shift
-    // has occurred). The actual fix is finding a safe magnitude empirically via
-    // RepositionLonDeltaDeg/RepositionLatDeltaDeg - see CODING_NOTES.md.
-    //
-    // Only moves IslandHorizon objects - region anchors, ocean-floor planes, ports, and boats
-    // (which scrambled-seas' WorldScrambler also moves) are deliberately out of scope for
-    // this rehearsal step.
+    // see data/vanilla_island_survey.json. Pure logging now - FloatingOriginOffsetPatch above
+    // is what actually makes these report shifted coordinates.
     [HarmonyPatch(typeof(IslandHorizon), "Start")]
-    internal static class IslandRepositionPatch
+    internal static class IslandSurveyLogPatch
     {
         private static void Postfix(IslandHorizon __instance)
         {
             Vector3 localPos = __instance.transform.localPosition;
-            Vector3 beforeGlobe = GetGlobe(__instance.transform);
-
-            if (Plugin.RepositionEnabled != null && Plugin.RepositionEnabled.Value
-                && FloatingOriginManager.instance != null)
-            {
-                FloatingOriginManager fom = FloatingOriginManager.instance;
-                Vector3 realPos = fom.ShiftingPosToRealPos(__instance.transform.position);
-                Vector3 targetReal = realPos + Plugin.ReposOffset;
-                __instance.transform.position = fom.RealPosToShiftingPos(targetReal);
-            }
-
-            Vector3 afterGlobe = GetGlobe(__instance.transform);
+            Vector3 globe = FloatingOriginManager.instance != null
+                ? FloatingOriginManager.instance.GetGlobeCoords(__instance.transform)
+                : new Vector3(float.NaN, float.NaN, float.NaN);
 
             Plugin.Log.LogInfo(
-                $"[RealEarth][Reposition] '{__instance.gameObject.name}' idx={__instance.islandIndex} " +
-                $"localPos={localPos} lon {beforeGlobe.x:F3}->{afterGlobe.x:F3} " +
-                $"lat {beforeGlobe.z:F3}->{afterGlobe.z:F3}");
-        }
-
-        private static Vector3 GetGlobe(Transform t)
-        {
-            return FloatingOriginManager.instance != null
-                ? FloatingOriginManager.instance.GetGlobeCoords(t)
-                : new Vector3(float.NaN, float.NaN, float.NaN);
+                $"[RealEarth][Survey] '{__instance.gameObject.name}' idx={__instance.islandIndex} " +
+                $"localPos={localPos} lon={globe.x:F3} lat={globe.z:F3}");
         }
     }
 }
