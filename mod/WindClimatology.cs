@@ -109,6 +109,18 @@ namespace SailwindRealEarth
             Plugin.Log.LogInfo($"[RealEarth] Loaded {points.Count} wind climatology rows from {csvPath}");
         }
 
+        // Matches pipeline/bake_wind_climatology.py's LAT_MIN/LAT_MAX/LON_MIN/LON_MAX - the box
+        // the baked grid actually covers (the vanilla archipelago's shifted bounding box).
+        // BorderExpander's Free Sailing lets the player go well outside this box (e.g. the real
+        // Pacific Northwest), where the nearest-point lookup below would otherwise still return
+        // the nearest (unrelated) Atlantic grid point's wind instead of leaving vanilla wind
+        // alone. Caught by CodeRabbit (PR #3) - matches a real in-game report (Columbia River
+        // Bar showing a southeast breeze instead of the expected northerly).
+        private const float GridLatMin = 15f;
+        private const float GridLatMax = 40f;
+        private const float GridLonMin = -47f;
+        private const float GridLonMax = 2f;
+
         // Nearest-grid-point lookup (not bilinear interpolation) - the 2.5deg grid spacing is
         // coarse enough that interpolation would be a meaningful accuracy improvement later, but
         // nearest-neighbor is enough to validate the concept for M2 and keeps this simple. Linear
@@ -124,6 +136,23 @@ namespace SailwindRealEarth
                 return false;
             }
 
+            // Normalize wrapped longitude (circumnavigation via BorderExpander can hand us a
+            // raw value outside +-180) before comparing against the grid's bounds or points.
+            float normalizedLon = lon % 360f;
+            if (normalizedLon > 180f)
+            {
+                normalizedLon -= 360f;
+            }
+            else if (normalizedLon <= -180f)
+            {
+                normalizedLon += 360f;
+            }
+
+            if (lat < GridLatMin || lat > GridLatMax || normalizedLon < GridLonMin || normalizedLon > GridLonMax)
+            {
+                return false;
+            }
+
             float bestDist = float.MaxValue;
             int bestIdx = -1;
             for (int i = 0; i < points.Count; i++)
@@ -135,7 +164,7 @@ namespace SailwindRealEarth
                 }
 
                 float dLat = p.Lat - lat;
-                float dLon = p.Lon - lon;
+                float dLon = p.Lon - normalizedLon;
                 float dist = dLat * dLat + dLon * dLon;
                 if (dist < bestDist)
                 {
