@@ -55,6 +55,6 @@ separate install step.
 - `data/` — (not yet populated) generated tiles the mod ships or downloads on demand; currently
   holds `vanilla_island_survey.json`, a reference dump of all 41 vanilla islands' names and
   real-lat/lon-style coordinates.
-- `docs/` — supplementary docs (not yet populated).
+- `docs/` — supplementary docs; currently just `ROADMAP.md`.
 - `.claude/CODING_NOTES.md` — confirmed API details, gotchas, and the full root-cause writeups for
   bugs hit along the way. Read this before making further changes.

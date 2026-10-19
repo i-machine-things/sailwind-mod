@@ -15,15 +15,23 @@ import subprocess
 
 def _is_git_commit_command(command: str) -> bool:
     """Return True only when command invokes the git commit subcommand."""
+    # shlex.split doesn't split on &&/;/| by itself, but it ALSO glues an operator onto an
+    # adjacent token when there's no surrounding whitespace (e.g. "git add .&&git commit" ->
+    # ['git', 'add', '.&&git', 'commit', ...], the '&&' swallowed into '.&&git') - which hid a
+    # later "git" from the token scan below even after an earlier fix for the spaced case.
+    # Caught by CodeRabbit (PR #2) with a direct repro. Padding operators with spaces first
+    # guarantees they always end up as their own token, regardless of original spacing.
+    command = re.sub(r"(&&|\|\||[;|])", r" \1 ", command)
+
     try:
         tokens = shlex.split(command, posix=True)
     except ValueError:
         return bool(re.search(r"git\s+commit", command))
 
     # Chained commands (git add . && git commit -m x) put a later "git" token after the first
-    # one, and shlex doesn't split on &&/;/| - so every "git" token needs checking, not just the
-    # first. Also match git.exe and backslash-style paths (Windows-compatible per this hook's own
-    # docstring), which the old `t.endswith("/git")` check missed. Caught by CodeRabbit.
+    # one - so every "git" token needs checking, not just the first. Also match git.exe and
+    # backslash-style paths (Windows-compatible per this hook's own docstring), which the old
+    # `t.endswith("/git")` check missed. Caught by CodeRabbit.
     git_idxs = [i for i, t in enumerate(tokens) if re.search(r"(^|[\\/])git(\.exe)?$", t, re.IGNORECASE)]
     if not git_idxs:
         return False
