@@ -53,13 +53,17 @@ def _is_git_commit_command(command: str) -> bool:
     def _is_command_position(idx: int) -> bool:
         # Walk backward past any leading VAR=value assignments (e.g. "GIT_TRACE=1 git commit"
         # is a real, valid way to invoke git - the env assignment doesn't change what the
-        # actual command is). Caught by CodeRabbit (PR #2), sixth pass.
+        # actual command is). Caught by CodeRabbit (PR #2), sixth pass. Also walk past a bare
+        # "env" token (e.g. "env git commit", or "env FOO=bar git commit" - env's own
+        # VAR=value arguments are already handled by the assignment check above) - same idea,
+        # a different real wrapper that doesn't change what the actual command is. Caught by
+        # CodeRabbit (PR #2), seventh pass.
         j = idx - 1
         while j >= 0:
             prev = tokens[j]
             if prev in _SEPARATORS:
                 return True
-            if _ENV_ASSIGNMENT.match(prev):
+            if _ENV_ASSIGNMENT.match(prev) or prev == "env":
                 j -= 1
                 continue
             return False

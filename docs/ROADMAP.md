@@ -176,9 +176,12 @@ same data and compute marker positions from each port's real lat/lon.
      required, global coverage) queried periodically for the boat's real
      coordinates.
    Both feed the same internal "current wind/weather at (lat,lon,time)"
-   interface, which Harmony-patches into the game's existing
-   `BoatWind`/`ApplyWeather`/`UpdateWind` methods, replacing their fictional
-   trade-wind-belt logic.
+   interface. **Note (confirmed building M2, see that section below):** the
+   actual geography-dependent patch target is `Wind.GetCurrentTradeWind()`
+   (direction) and `Wind.SetNewWindTarget()` (magnitude) - `BoatWind` only
+   computes apparent wind from the boat's own velocity (no geography) and
+   `Weather`/`ApplyWeather` is purely visual (sky/cloud/rain), so neither
+   implements or needs patching for the trade-wind direction logic itself.
 5. **Celestial navigation**: once positions are real, replace the sextant's
    underlying latitude solution with a real solar/stellar ephemeris
    computation (standard astronomical formulas), so navigation becomes
