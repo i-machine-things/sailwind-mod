@@ -49,6 +49,10 @@ namespace SailwindRealEarth
         internal static Vector3 ReposOffset =>
             new Vector3(ReposLonDeltaDeg.Value * UnitsPerDegree, 0f, ReposLatDeltaDeg.Value * UnitsPerDegree);
 
+        // M2: real historical wind direction, baked from Open-Meteo's archive API - see
+        // pipeline/bake_wind_climatology.py and CODING_NOTES.md.
+        internal static ConfigEntry<bool> HistoricalWindEnabled;
+
         private Harmony harmony;
         private bool overlayVisible = true;
 
@@ -72,6 +76,15 @@ namespace SailwindRealEarth
             ReposLatDeltaDeg = Config.Bind(
                 "RealEarth", "RepositionLatDeltaDeg", -8.35f,
                 "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
+            HistoricalWindEnabled = Config.Bind(
+                "RealEarth", "HistoricalWindEnabled", true,
+                "M2: replace Wind.GetCurrentTradeWind's fictional direction, and "
+                + "Wind.SetNewWindTarget's base magnitude, with real historical-average values "
+                + "for the player's current (shifted) lon/lat and the real-world current month, "
+                + "from a climatology grid baked offline by pipeline/bake_wind_climatology.py. "
+                + "Magnitude is clamped to vanilla's own [minimumMagnitude, maximumMagnitude] "
+                + "range - chaos/gusts/storms still stay vanilla. No effect if "
+                + "BepInEx/plugins/SailwindRealEarth/wind_climatology.csv is missing.");
             // BorderExpander is a soft, not hard, dependency (see the class-level comment above
             // for why) - but if reposition is on and it's missing, the player WILL get stuck at
             // the vanilla world-border "out of game area" recovery the moment they sail near the
@@ -103,7 +116,9 @@ namespace SailwindRealEarth
 
             harmony = new Harmony(PluginGuid);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
-            Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay");
+            Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay, "
+                + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust, "
+                + "F8 logs BorderExpander's live border-limit state");
         }
 
         private static bool IsBorderExpanderFreeSailingEnabled()
@@ -121,6 +136,96 @@ namespace SailwindRealEarth
             {
                 overlayVisible = !overlayVisible;
             }
+
+            // Wind.SetNewWindTarget only runs on its own internal timer (unknown exact
+            // interval - Inspector-configured, not visible from decompiled code alone), which
+            // made testing HistoricalWindEnabled's on/off difference impractical: toggling it
+            // and immediately comparing just shows whatever wind value was already computed
+            // before the toggle, since nothing forces a recalculation. Wind.debugChangeWind is
+            // the game's own existing debug hook for this (confirmed in Wind.Update: setting it
+            // zeroes the internal timer, forcing SetNewWindTarget to run again immediately) -
+            // F6 exposes it so the toggle is actually testable on demand. Originally bound to
+            // F10, but that's already wired to vanilla's own pause/escape menu - confirmed live
+            // (pressing it opened the esc menu instead of just logging), moved off the F9-F12
+            // range entirely to dodge any other undocumented vanilla bindings in that block.
+            if (Input.GetKeyDown(KeyCode.F6) && Wind.instance != null)
+            {
+                Wind.instance.debugChangeWind = true;
+                Log.LogInfo("[RealEarth] F6: forced an immediate Wind.SetNewWindTarget recalculation.");
+            }
+
+            // F6 proved the direction toggle works correctly via log lines, but a direction-only
+            // change within vanilla's normal gameplay magnitude range (currentWind started at
+            // ~9 units) is genuinely hard to feel/see at the dock over a short window - raised
+            // directly by live testing ("not seeing any difference in-game"). This forces an
+            // obvious, unmistakable gust using the game's own existing public debug hook
+            // (Wind.ForceNewWind, confirmed in Wind.cs: sets currentWind/currentBaseWind directly
+            // and re-triggers target/gust calculation) at several times normal magnitude, in the
+            // SAME direction our climatology patch computes - so it's both a magnitude sanity
+            // check and a visible demonstration of the real direction, not a separate fake test.
+            if (Input.GetKeyDown(KeyCode.F7) && Wind.instance != null)
+            {
+                Vector3 direction = Wind.currentWind.sqrMagnitude > 0.0001f
+                    ? Wind.currentWind.normalized
+                    : Vector3.forward;
+
+                if (FloatingOriginManager.instance != null && Refs.observerMirror != null)
+                {
+                    WindClimatology.EnsureLoaded();
+                    Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+                    if (WindClimatology.TryGetWind(globe.x, globe.z, DateTime.Now.Month, out float bearing, out _))
+                    {
+                        direction = WindClimatology.BearingToDirection(bearing);
+                    }
+                }
+
+                const float GaleMagnitude = 60f;
+                Wind.instance.ForceNewWind(direction * GaleMagnitude);
+                Log.LogInfo($"[RealEarth] F7: forced an obvious test gust, direction={direction} magnitude={GaleMagnitude} "
+                    + "(several times normal - for visibility, not a realistic value).");
+            }
+
+            // Diagnostic for the "recovery cascade at extreme offsets" investigation - after
+            // repositioning to 46N/123W, a large outCurrentOffset drift was observed alongside a
+            // 2000+-call Shift() burst, matching Recovery.worldBorder (confirmed via decompiling
+            // Recovery.cs: DoRecoverPlayer raw-teleports Refs.observerMirror.transform.position
+            // to the last visited port, which - since we never move raw positions ourselves -
+            // retriggers FloatingOriginManager's own auto-shift). BorderExpander's own
+            // WorldBorderPatch should set eastLimit/westLimit to +-Infinity when Free Sailing is
+            // on, which shouldn't flag any finite longitude - reading its actual live field
+            // values via reflection (no direct assembly reference - don't want a hard build
+            // dependency on a third-party mod) rather than guessing why it fired anyway.
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                LogBorderExpanderState();
+            }
+        }
+
+        private static void LogBorderExpanderState()
+        {
+            Type beType = Type.GetType("BorderExpander.Plugin, BorderExpander");
+            if (beType == null)
+            {
+                Log.LogInfo("[RealEarth] F8: BorderExpander.Plugin type not found (not loaded?).");
+                return;
+            }
+
+            object GetStatic(string name)
+            {
+                FieldInfo f = beType.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                return f?.GetValue(null);
+            }
+
+            object freeSailEntry = GetStatic("freeSail");
+            object freeSailValue = freeSailEntry?.GetType().GetProperty("Value")?.GetValue(freeSailEntry);
+            object initialized = GetStatic("initialized");
+            object north = GetStatic("northLimit");
+            object south = GetStatic("southLimit");
+            object east = GetStatic("eastLimit");
+            object west = GetStatic("westLimit");
+
+            Log.LogInfo($"[RealEarth] F8: BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
+                + $"limits N={north} S={south} E={east} W={west}");
         }
 
         private void OnGUI()
@@ -248,6 +353,125 @@ namespace SailwindRealEarth
             Plugin.Log.LogInfo(
                 $"[RealEarth][Survey] '{__instance.gameObject.name}' idx={__instance.islandIndex} " +
                 $"localPos={localPos} lon={globe.x:F3} lat={globe.z:F3}");
+        }
+    }
+
+    // M2: replaces the vanilla fictional trade-wind direction with a real historical-average
+    // one. Confirmed by decompiling Wind.cs: GetCurrentTradeWind is the *only* geography-
+    // dependent piece of the wind system - it returns a direction vector (not a full wind
+    // vector) from hardcoded lat/lon thresholds, which SetNewWindTarget then blends with a
+    // random direction, the previous wind's direction, and separately-computed magnitude/chaos/
+    // storm/coastal effects. Overriding only this method's __result therefore swaps in a real
+    // direction while leaving all of that existing variability/gameplay-feel logic untouched -
+    // exactly the surgical patch point the plan called for, not a guess.
+    [HarmonyPatch(typeof(Wind), "GetCurrentTradeWind")]
+    internal static class HistoricalWindDirectionPatch
+    {
+        private static void Postfix(Wind __instance, ref Vector3 __result)
+        {
+            if (Plugin.HistoricalWindEnabled == null || !Plugin.HistoricalWindEnabled.Value)
+            {
+                return;
+            }
+
+            if (FloatingOriginManager.instance == null || Refs.observerMirror == null)
+            {
+                return;
+            }
+
+            WindClimatology.EnsureLoaded();
+            if (!WindClimatology.IsLoaded)
+            {
+                return;
+            }
+
+            // Same reference object the vanilla method itself already queries (Refs.observerMirror)
+            // - already shifted automatically by FloatingOriginOffsetPatch, no extra work needed.
+            Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+            int month = DateTime.Now.Month;
+
+            if (WindClimatology.TryGetWind(globe.x, globe.z, month, out float bearing, out float speedKn))
+            {
+                __result = WindClimatology.BearingToDirection(bearing);
+                // Logging minimumMagnitude/maximumMagnitude here too - Inspector-configured
+                // fields, not visible from decompiled code alone - to calibrate a real
+                // knots-to-game-units conversion for the still-open "apply real magnitude" M2
+                // item, rather than guessing a scale factor blind.
+                Plugin.Log.LogInfo(
+                    $"[RealEarth][HistoricalWind] lon={globe.x:F2} lat={globe.z:F2} month={month} -> "
+                    + $"toward_bearing={bearing:F1}deg, mean speed {speedKn:F1}kn "
+                    + $"| vanilla magnitude range [{__instance.minimumMagnitude:F2}, {__instance.maximumMagnitude:F2}]");
+            }
+        }
+    }
+
+    // M2 magnitude: applies the climatology's real mean wind speed, not just direction.
+    // Confirmed live (F6-forced recalculation, logged alongside HistoricalWindDirectionPatch
+    // above): vanilla's own minimumMagnitude/maximumMagnitude are [0, 18], and our baked grid's
+    // mean_speed_kn ranges 2.79-21.85 (mean 11.9) across all 220 points/12 months - close enough
+    // to a 1:1 correspondence that the devs' magnitude units are plausibly already "roughly
+    // knots". Uses the climatology speed directly (clamped to vanilla's own range, so it can
+    // never exceed what the game was tuned/tested for) rather than inventing an unjustified
+    // scale factor.
+    //
+    // SetNewWindTarget is private, and the field we need to rescale (currentWindTarget) is
+    // private too - Harmony's "___fieldName" Postfix parameter convention gives ref access to
+    // it. Postfix (not Prefix) so this runs after the vanilla method (and
+    // HistoricalWindDirectionPatch, which patches a method SetNewWindTarget calls internally)
+    // have already set the target's direction - this only rescales magnitude, direction is
+    // untouched.
+    [HarmonyPatch(typeof(Wind), "SetNewWindTarget")]
+    internal static class HistoricalWindMagnitudePatch
+    {
+        private static void Postfix(Wind __instance, ref Vector3 ___currentWindTarget)
+        {
+            if (Plugin.HistoricalWindEnabled == null || !Plugin.HistoricalWindEnabled.Value)
+            {
+                return;
+            }
+
+            if (FloatingOriginManager.instance == null || Refs.observerMirror == null)
+            {
+                return;
+            }
+
+            WindClimatology.EnsureLoaded();
+            if (!WindClimatology.IsLoaded)
+            {
+                return;
+            }
+
+            if (___currentWindTarget.sqrMagnitude < 0.0001f)
+            {
+                // No direction to rescale (shouldn't normally happen - direction is set earlier
+                // in the same method call via GetCurrentTradeWind/blending) - skip rather than
+                // risk dividing by ~zero in .normalized.
+                return;
+            }
+
+            Vector3 globe = FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform);
+            int month = DateTime.Now.Month;
+
+            if (WindClimatology.TryGetWind(globe.x, globe.z, month, out _, out float speedKn))
+            {
+                // Rescale the vanilla-computed magnitude rather than replacing it outright -
+                // ___currentWindTarget already has the random walk plus chaos/storm/coastal
+                // effects baked in by this point, and replacing it with a single fixed
+                // climatology value per grid point/month would flatten all of that organic
+                // variability (same gust/storm feel the ROADMAP's M2 section calls out as
+                // something to preserve). Scaling by (climatology speed / vanilla midpoint)
+                // keeps the vanilla variation shape while biasing its average toward the real
+                // value. Caught by CodeRabbit (PR #3).
+                float vanillaMagnitude = ___currentWindTarget.magnitude;
+                float vanillaMid = 0.5f * (__instance.minimumMagnitude + __instance.maximumMagnitude);
+                float scale = vanillaMid > 0.0001f ? speedKn / vanillaMid : 1f;
+                float magnitude = Mathf.Clamp(vanillaMagnitude * scale,
+                    __instance.minimumMagnitude, __instance.maximumMagnitude);
+                ___currentWindTarget = ___currentWindTarget.normalized * magnitude;
+                Plugin.Log.LogInfo($"[RealEarth][HistoricalWind] applied magnitude {magnitude:F2} "
+                    + $"(climatology {speedKn:F1}kn scaling vanilla {vanillaMagnitude:F2}, "
+                    + "clamped to vanilla range).");
+            }
         }
     }
 }
