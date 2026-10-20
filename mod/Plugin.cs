@@ -454,10 +454,23 @@ namespace SailwindRealEarth
 
             if (WindClimatology.TryGetWind(globe.x, globe.z, month, out _, out float speedKn))
             {
-                float magnitude = Mathf.Clamp(speedKn, __instance.minimumMagnitude, __instance.maximumMagnitude);
+                // Rescale the vanilla-computed magnitude rather than replacing it outright -
+                // ___currentWindTarget already has the random walk plus chaos/storm/coastal
+                // effects baked in by this point, and replacing it with a single fixed
+                // climatology value per grid point/month would flatten all of that organic
+                // variability (same gust/storm feel the ROADMAP's M2 section calls out as
+                // something to preserve). Scaling by (climatology speed / vanilla midpoint)
+                // keeps the vanilla variation shape while biasing its average toward the real
+                // value. Caught by CodeRabbit (PR #3).
+                float vanillaMagnitude = ___currentWindTarget.magnitude;
+                float vanillaMid = 0.5f * (__instance.minimumMagnitude + __instance.maximumMagnitude);
+                float scale = vanillaMid > 0.0001f ? speedKn / vanillaMid : 1f;
+                float magnitude = Mathf.Clamp(vanillaMagnitude * scale,
+                    __instance.minimumMagnitude, __instance.maximumMagnitude);
                 ___currentWindTarget = ___currentWindTarget.normalized * magnitude;
                 Plugin.Log.LogInfo($"[RealEarth][HistoricalWind] applied magnitude {magnitude:F2} "
-                    + $"(climatology {speedKn:F1}kn, clamped to vanilla range).");
+                    + $"(climatology {speedKn:F1}kn scaling vanilla {vanillaMagnitude:F2}, "
+                    + "clamped to vanilla range).");
             }
         }
     }

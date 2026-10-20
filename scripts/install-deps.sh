@@ -40,7 +40,15 @@ install_dep() {
     local tmp
     tmp="$(mktemp)"
     echo "$name: downloading..."
-    curl -sL -o "$tmp" "$url"
+    # -f makes curl exit nonzero on an HTTP error response instead of writing the error body
+    # to $tmp as if it were the file - without it, a 404/5xx page would just fail the checksum
+    # check below with a misleading "checksum mismatch" message. --retry covers transient
+    # network blips. Caught by CodeRabbit (PR #3).
+    if ! curl -fsSL --retry 3 -o "$tmp" "$url"; then
+        echo "error: $name download failed from $url" >&2
+        rm -f "$tmp"
+        exit 1
+    fi
 
     local actual_sha
     actual_sha="$(sha256sum "$tmp" | cut -d' ' -f1)"
