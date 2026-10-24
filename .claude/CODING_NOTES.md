@@ -19,6 +19,19 @@
 - **Reference the game's/BepInEx's actual installed DLLs directly (`<Reference><HintPath>`), not NuGet packages, for `Assembly-CSharp`, `BepInEx`, `0Harmony`, and `UnityEngine.*`.** Guarantees the compiled plugin always matches exactly what's loaded at runtime. This is also what the real Sailwind mods on GitHub (`BorderExpander`, `ChaoticWind`) do.
 - **`MonoBehaviour`/`BaseUnityPlugin` needs *both* `UnityEngine.dll` (the legacy facade) and `UnityEngine.CoreModule.dll` referenced** — CoreModule alone throws `CS0012` on `MonoBehaviour`. `OnGUI`/`GUI.*` need a further separate reference, `UnityEngine.IMGUIModule.dll`.
 
+## Live debugging / observability
+
+- **BepInEx's `LogOutput.log` excludes Unity's own `Debug.Log` calls by default** - `WriteUnityLog` in `BepInEx/config/BepInEx.cfg` defaults to `false`. Set it `true` to see vanilla/third-party `Debug.Log` output too.
+- **That default silently hid real evidence** - both `Recovery.DoRecoverPlayer`'s own logging and `BorderExpander.Plugin.UpdateLimits()`'s "updating/defaulting world limits" lines looked like "never ran," but actually just meant "never written to disk."
+- **`RecoveryReasonLogPatch`** (Harmony Prefix on `Recovery.RecoverPlayer`) logs the real `RecoveryReason` (water/food/`worldBorder`/protein/vitamins/requested) plus live globe coords and `BorderExpander`'s limit state every time a recovery (dock teleport) fires.
+- **Added because guessing after the fact wasn't reliable** - screenshots and F8 pressed at the wrong moment couldn't pin down which of several possible causes triggered the recovery-cascade bug.
+- **F11 debug-teleport only moves `observerMirror`, never `GameState.currentBoat`.** An earlier version also teleported the boat, mirroring `Recovery.DoRecoverPlayer`'s own raw move.
+- **That caused a real soft-crash, confirmed live** - skipping `RecoverBoat`'s multi-frame sequencing (unmoor, several `WaitForFixedUpdate`s, re-moor) desynced cargo rigidbodies and threw several ambient-system `NullReferenceException`s.
+- **Specifically: player auto-disembarked into the water, `OceanRenderer`'s viewpoint went null** - looked identical to a soft crash (could look around, nothing rendered).
+- **Moving `observerMirror` alone doesn't stick, confirmed live then confirmed why by decompiling `PlayerControllerMirror.cs`.** Its `LateUpdate` does `transform.localPosition = controller.localPosition` every single frame.
+- **It's a read-only reflection of the real controller, not an independent authority** - a manual position set on it reverts within a frame or two, which is exactly what was observed live.
+- **Fixed by teleporting `Refs.observerMirror.controller` instead** - a plain public `Transform` field, not the Oculus.VR-typed `Refs.ovrController`, so this still needs no VR assembly reference.
+
 ## Sailwind modding ecosystem
 
 - **`FloatingOriginManager.instance.GetGlobeCoords(transform)` is the game's real, built-in lat/lon API** — `.x` = longitude, `.z` = latitude, ~9000 Unity units per degree. Confirmed by reading real shipped mod source (`NANDbrew/BorderExpander`, `Rahakami/scrambled-seas`), not by guessing. Don't build a parallel coordinate system — extend this one.

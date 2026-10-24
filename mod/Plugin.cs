@@ -45,6 +45,8 @@ namespace SailwindRealEarth
         internal static ConfigEntry<float> ReposLonDeltaDeg;
         internal static ConfigEntry<float> ReposLatDeltaDeg;
         internal static ConfigEntry<bool> RepositionEnabled;
+        internal static ConfigEntry<float> DebugTeleportLonDeg;
+        internal static ConfigEntry<float> DebugTeleportLatDeg;
 
         internal static Vector3 ReposOffset =>
             new Vector3(ReposLonDeltaDeg.Value * UnitsPerDegree, 0f, ReposLatDeltaDeg.Value * UnitsPerDegree);
@@ -76,6 +78,15 @@ namespace SailwindRealEarth
             ReposLatDeltaDeg = Config.Bind(
                 "RealEarth", "RepositionLatDeltaDeg", -8.35f,
                 "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
+            DebugTeleportLonDeg = Config.Bind(
+                "RealEarth", "DebugTeleportLonDeg", -123f,
+                "F11 debug-teleports here (longitude) - lets testing reach a target lon/lat "
+                + "instantly instead of sailing there in real time, which can take hours for "
+                + "distant targets. Default is the Pacific Northwest test coordinate used while "
+                + "investigating the recovery-cascade bug.");
+            DebugTeleportLatDeg = Config.Bind(
+                "RealEarth", "DebugTeleportLatDeg", 46f,
+                "F11 debug-teleports here (latitude). See DebugTeleportLonDeg.");
             HistoricalWindEnabled = Config.Bind(
                 "RealEarth", "HistoricalWindEnabled", true,
                 "M2: replace Wind.GetCurrentTradeWind's fictional direction, and "
@@ -118,7 +129,8 @@ namespace SailwindRealEarth
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay, "
                 + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust, "
-                + "F8 logs BorderExpander's live border-limit state");
+                + "F8 logs BorderExpander's live border-limit state, F11 debug-teleports to "
+                + "DebugTeleportLonDeg/DebugTeleportLatDeg");
         }
 
         private static bool IsBorderExpanderFreeSailingEnabled()
@@ -199,15 +211,79 @@ namespace SailwindRealEarth
             {
                 LogBorderExpanderState();
             }
+
+            // Sailing to a distant debug target (e.g. the Pacific Northwest, ~8000nm from the
+            // relabeled Atlantic-ish spawn) in real time can take hours to days - raised directly
+            // ("thats going to take hours or days of real time") while trying to reproduce the
+            // recovery-cascade bug live. This does the exact same raw-position jump
+            // Recovery.DoRecoverPlayer itself does (confirmed by decompiling Recovery.cs) to
+            // whatever (DebugTeleportLonDeg, DebugTeleportLatDeg) is configured, computed by
+            // inverting GetGlobeCoords' own formula against the CURRENT outCurrentOffset (and its
+            // private globeOffset, which we never need to read directly) rather than hardcoding
+            // either constant - so it stays correct even if RepositionIslands' offset changes.
+            if (Input.GetKeyDown(KeyCode.F11) && FloatingOriginManager.instance != null && Refs.observerMirror != null)
+            {
+                DebugTeleport();
+            }
+        }
+
+        private static void DebugTeleport()
+        {
+            // Moving observerMirror.transform directly (an earlier version) doesn't stick:
+            // PlayerControllerMirror.LateUpdate unconditionally overwrites its OWN position every
+            // single frame from its "controller" field ("transform.localPosition =
+            // controller.localPosition") - confirmed by decompiling PlayerControllerMirror.cs,
+            // after the previous version's teleport visibly reverted to the original position
+            // within a frame or two when tested live. observerMirror is a read-only reflection of
+            // the real controller, not an independent authority - so the actual teleport target
+            // has to be the controller transform itself. PlayerControllerMirror.controller is a
+            // plain public Transform field (not the Oculus.VR-typed Refs.ovrController), so this
+            // needs no VR assembly reference.
+            Transform controller = Refs.observerMirror.controller;
+            Vector3 currentRaw = controller.position;
+            Vector3 currentGlobe = FloatingOriginManager.instance.GetGlobeCoords(controller);
+            Vector3 targetGlobe = new Vector3(DebugTeleportLonDeg.Value, 0f, DebugTeleportLatDeg.Value);
+
+            // GetGlobeCoords(t) = (t.position - outCurrentOffset - globeOffset) / 9000, so
+            // t.position = globe*9000 + (outCurrentOffset + globeOffset). Solving for the
+            // combined offset from a transform we can read right now avoids needing to read
+            // FloatingOriginManager's private globeOffset field at all.
+            Vector3 combinedOffset = currentRaw - currentGlobe * UnitsPerDegree;
+            Vector3 targetRaw = targetGlobe * UnitsPerDegree + combinedOffset;
+            targetRaw.y = currentRaw.y;
+
+            controller.position = targetRaw;
+
+            // Deliberately does NOT also move GameState.currentBoat - an earlier version did,
+            // mirroring Recovery.DoRecoverPlayer's own raw teleport, and it broke things badly:
+            // the boat's Transform jumped instantly with none of RecoverBoat's careful
+            // multi-frame sequencing (unmoor ropes, wait several FixedUpdates, re-moor), which
+            // desynced its cargo's rigidbodies (mass "exiting embark col" spam), threw several
+            // environment-system NullReferenceExceptions (WanderingStorm/SunlightNightIntensity/
+            // UnderwaterMusic/etc.), auto-disembarked the player into the water, and left
+            // OceanRenderer's viewpoint null - a real soft-crash (confirmed live: "game is now
+            // unplayable (soft crash) i can look around but cant see anything"). The boat
+            // visually gets left behind here too, an acceptable tradeoff for a debug-only key.
+            Log.LogWarning($"[RealEarth] F11: debug-teleported the real player controller to lon={targetGlobe.x:F2} "
+                + $"lat={targetGlobe.z:F2} (boat intentionally left behind - see comment above). "
+                + "Expect a floating-origin shift cascade (many ShiftCall log lines) right after.");
         }
 
         private static void LogBorderExpanderState()
         {
+            Log.LogInfo($"[RealEarth] F8: {DescribeBorderExpanderState()}");
+        }
+
+        // Shared by the F8 manual dump and RecoveryReasonLogPatch (fires automatically whenever
+        // Recovery.RecoverPlayer is called) - both want the same live field snapshot. Reflection,
+        // not a direct assembly reference, since this is a soft dependency we don't want a hard
+        // build reference to.
+        internal static string DescribeBorderExpanderState()
+        {
             Type beType = Type.GetType("BorderExpander.Plugin, BorderExpander");
             if (beType == null)
             {
-                Log.LogInfo("[RealEarth] F8: BorderExpander.Plugin type not found (not loaded?).");
-                return;
+                return "BorderExpander.Plugin type not found (not loaded?).";
             }
 
             object GetStatic(string name)
@@ -224,8 +300,8 @@ namespace SailwindRealEarth
             object east = GetStatic("eastLimit");
             object west = GetStatic("westLimit");
 
-            Log.LogInfo($"[RealEarth] F8: BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
-                + $"limits N={north} S={south} E={east} W={west}");
+            return $"BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
+                + $"limits N={north} S={south} E={east} W={west}";
         }
 
         private void OnGUI()
@@ -472,6 +548,27 @@ namespace SailwindRealEarth
                     + $"(climatology {speedKn:F1}kn scaling vanilla {vanillaMagnitude:F2}, "
                     + "clamped to vanilla range).");
             }
+        }
+    }
+
+    // Direct visibility into why a recovery (the "out of game area"/thirst/hunger/etc. dock
+    // teleport) fired, instead of inferring it after the fact - BepInEx's LogOutput.log doesn't
+    // include Unity's own Debug.Log calls by default (WriteUnityLog=false in BepInEx.cfg unless
+    // the user opts in), so neither Recovery.DoRecoverPlayer's nor BorderExpander's own logging
+    // ("updating/defaulting world limits") were ever reaching the log file - this patch logs the
+    // actual RecoveryReason plus live globe coords and BorderExpander's border-limit state at the
+    // exact moment recovery is requested, through our own ManualLogSource instead.
+    [HarmonyPatch(typeof(Recovery), "RecoverPlayer")]
+    internal static class RecoveryReasonLogPatch
+    {
+        private static void Prefix(RecoveryReason reason)
+        {
+            Vector3 globe = (FloatingOriginManager.instance != null && Refs.observerMirror != null)
+                ? FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform)
+                : new Vector3(float.NaN, float.NaN, float.NaN);
+
+            Plugin.Log.LogWarning($"[RealEarth][Recovery] RecoverPlayer reason={reason} "
+                + $"lon={globe.x:F3} lat={globe.z:F3} | {Plugin.DescribeBorderExpanderState()}");
         }
     }
 }
