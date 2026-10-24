@@ -229,9 +229,19 @@ namespace SailwindRealEarth
 
         private static void DebugTeleport()
         {
-            Transform observer = Refs.observerMirror.transform;
-            Vector3 currentRaw = observer.position;
-            Vector3 currentGlobe = FloatingOriginManager.instance.GetGlobeCoords(observer);
+            // Moving observerMirror.transform directly (an earlier version) doesn't stick:
+            // PlayerControllerMirror.LateUpdate unconditionally overwrites its OWN position every
+            // single frame from its "controller" field ("transform.localPosition =
+            // controller.localPosition") - confirmed by decompiling PlayerControllerMirror.cs,
+            // after the previous version's teleport visibly reverted to the original position
+            // within a frame or two when tested live. observerMirror is a read-only reflection of
+            // the real controller, not an independent authority - so the actual teleport target
+            // has to be the controller transform itself. PlayerControllerMirror.controller is a
+            // plain public Transform field (not the Oculus.VR-typed Refs.ovrController), so this
+            // needs no VR assembly reference.
+            Transform controller = Refs.observerMirror.controller;
+            Vector3 currentRaw = controller.position;
+            Vector3 currentGlobe = FloatingOriginManager.instance.GetGlobeCoords(controller);
             Vector3 targetGlobe = new Vector3(DebugTeleportLonDeg.Value, 0f, DebugTeleportLatDeg.Value);
 
             // GetGlobeCoords(t) = (t.position - outCurrentOffset - globeOffset) / 9000, so
@@ -242,23 +252,19 @@ namespace SailwindRealEarth
             Vector3 targetRaw = targetGlobe * UnitsPerDegree + combinedOffset;
             targetRaw.y = currentRaw.y;
 
-            observer.position = targetRaw;
+            controller.position = targetRaw;
 
-            // Deliberately does NOT also move GameState.currentBoat (or
-            // Refs.ovrController) - an earlier version did, mirroring
-            // Recovery.DoRecoverPlayer's own raw teleport, and it broke things badly: the boat's
-            // Transform jumped instantly with none of RecoverBoat's careful multi-frame
-            // sequencing (unmoor ropes, wait several FixedUpdates, re-moor), which desynced its
-            // cargo's rigidbodies (mass "exiting embark col" spam), threw several environment-
-            // system NullReferenceExceptions (WanderingStorm/SunlightNightIntensity/
+            // Deliberately does NOT also move GameState.currentBoat - an earlier version did,
+            // mirroring Recovery.DoRecoverPlayer's own raw teleport, and it broke things badly:
+            // the boat's Transform jumped instantly with none of RecoverBoat's careful
+            // multi-frame sequencing (unmoor ropes, wait several FixedUpdates, re-moor), which
+            // desynced its cargo's rigidbodies (mass "exiting embark col" spam), threw several
+            // environment-system NullReferenceExceptions (WanderingStorm/SunlightNightIntensity/
             // UnderwaterMusic/etc.), auto-disembarked the player into the water, and left
             // OceanRenderer's viewpoint null - a real soft-crash (confirmed live: "game is now
-            // unplayable (soft crash) i can look around but cant see anything"). WorldBorder's own
-            // check reads GetGlobeCoords off the same transform the rest of this mod already uses
-            // (observerMirror), so moving only that is enough to test border/recovery logic - the
-            // boat visually gets left behind, which is an acceptable tradeoff for a debug-only key,
-            // not something to fix by reimplementing RecoverBoat's sequencing here.
-            Log.LogWarning($"[RealEarth] F11: debug-teleported observerMirror to lon={targetGlobe.x:F2} "
+            // unplayable (soft crash) i can look around but cant see anything"). The boat
+            // visually gets left behind here too, an acceptable tradeoff for a debug-only key.
+            Log.LogWarning($"[RealEarth] F11: debug-teleported the real player controller to lon={targetGlobe.x:F2} "
                 + $"lat={targetGlobe.z:F2} (boat intentionally left behind - see comment above). "
                 + "Expect a floating-origin shift cascade (many ShiftCall log lines) right after.");
         }
