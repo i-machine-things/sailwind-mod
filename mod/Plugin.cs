@@ -45,6 +45,8 @@ namespace SailwindRealEarth
         internal static ConfigEntry<float> ReposLonDeltaDeg;
         internal static ConfigEntry<float> ReposLatDeltaDeg;
         internal static ConfigEntry<bool> RepositionEnabled;
+        internal static ConfigEntry<float> DebugTeleportLonDeg;
+        internal static ConfigEntry<float> DebugTeleportLatDeg;
 
         internal static Vector3 ReposOffset =>
             new Vector3(ReposLonDeltaDeg.Value * UnitsPerDegree, 0f, ReposLatDeltaDeg.Value * UnitsPerDegree);
@@ -76,6 +78,15 @@ namespace SailwindRealEarth
             ReposLatDeltaDeg = Config.Bind(
                 "RealEarth", "RepositionLatDeltaDeg", -8.35f,
                 "Latitude shift in degrees applied to every island. See RepositionIslands for the confirmed-safe range.");
+            DebugTeleportLonDeg = Config.Bind(
+                "RealEarth", "DebugTeleportLonDeg", -123f,
+                "F11 debug-teleports here (longitude) - lets testing reach a target lon/lat "
+                + "instantly instead of sailing there in real time, which can take hours for "
+                + "distant targets. Default is the Pacific Northwest test coordinate used while "
+                + "investigating the recovery-cascade bug.");
+            DebugTeleportLatDeg = Config.Bind(
+                "RealEarth", "DebugTeleportLatDeg", 46f,
+                "F11 debug-teleports here (latitude). See DebugTeleportLonDeg.");
             HistoricalWindEnabled = Config.Bind(
                 "RealEarth", "HistoricalWindEnabled", true,
                 "M2: replace Wind.GetCurrentTradeWind's fictional direction, and "
@@ -118,7 +129,8 @@ namespace SailwindRealEarth
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             Log.LogInfo($"{PluginName} {PluginVersion} loaded - F9 toggles the lat/lon overlay, "
                 + "F6 forces an immediate wind recalculation, F7 forces an obvious test gust, "
-                + "F8 logs BorderExpander's live border-limit state");
+                + "F8 logs BorderExpander's live border-limit state, F11 debug-teleports to "
+                + "DebugTeleportLonDeg/DebugTeleportLatDeg");
         }
 
         private static bool IsBorderExpanderFreeSailingEnabled()
@@ -199,6 +211,56 @@ namespace SailwindRealEarth
             {
                 LogBorderExpanderState();
             }
+
+            // Sailing to a distant debug target (e.g. the Pacific Northwest, ~8000nm from the
+            // relabeled Atlantic-ish spawn) in real time can take hours to days - raised directly
+            // ("thats going to take hours or days of real time") while trying to reproduce the
+            // recovery-cascade bug live. This does the exact same raw-position jump
+            // Recovery.DoRecoverPlayer itself does (confirmed by decompiling Recovery.cs) to
+            // whatever (DebugTeleportLonDeg, DebugTeleportLatDeg) is configured, computed by
+            // inverting GetGlobeCoords' own formula against the CURRENT outCurrentOffset (and its
+            // private globeOffset, which we never need to read directly) rather than hardcoding
+            // either constant - so it stays correct even if RepositionIslands' offset changes.
+            if (Input.GetKeyDown(KeyCode.F11) && FloatingOriginManager.instance != null && Refs.observerMirror != null)
+            {
+                DebugTeleport();
+            }
+        }
+
+        private static void DebugTeleport()
+        {
+            Transform observer = Refs.observerMirror.transform;
+            Vector3 currentRaw = observer.position;
+            Vector3 currentGlobe = FloatingOriginManager.instance.GetGlobeCoords(observer);
+            Vector3 targetGlobe = new Vector3(DebugTeleportLonDeg.Value, 0f, DebugTeleportLatDeg.Value);
+
+            // GetGlobeCoords(t) = (t.position - outCurrentOffset - globeOffset) / 9000, so
+            // t.position = globe*9000 + (outCurrentOffset + globeOffset). Solving for the
+            // combined offset from a transform we can read right now avoids needing to read
+            // FloatingOriginManager's private globeOffset field at all.
+            Vector3 combinedOffset = currentRaw - currentGlobe * UnitsPerDegree;
+            Vector3 targetRaw = targetGlobe * UnitsPerDegree + combinedOffset;
+            targetRaw.y = currentRaw.y;
+
+            observer.position = targetRaw;
+
+            // Deliberately does NOT also move GameState.currentBoat (or
+            // Refs.ovrController) - an earlier version did, mirroring
+            // Recovery.DoRecoverPlayer's own raw teleport, and it broke things badly: the boat's
+            // Transform jumped instantly with none of RecoverBoat's careful multi-frame
+            // sequencing (unmoor ropes, wait several FixedUpdates, re-moor), which desynced its
+            // cargo's rigidbodies (mass "exiting embark col" spam), threw several environment-
+            // system NullReferenceExceptions (WanderingStorm/SunlightNightIntensity/
+            // UnderwaterMusic/etc.), auto-disembarked the player into the water, and left
+            // OceanRenderer's viewpoint null - a real soft-crash (confirmed live: "game is now
+            // unplayable (soft crash) i can look around but cant see anything"). WorldBorder's own
+            // check reads GetGlobeCoords off the same transform the rest of this mod already uses
+            // (observerMirror), so moving only that is enough to test border/recovery logic - the
+            // boat visually gets left behind, which is an acceptable tradeoff for a debug-only key,
+            // not something to fix by reimplementing RecoverBoat's sequencing here.
+            Log.LogWarning($"[RealEarth] F11: debug-teleported observerMirror to lon={targetGlobe.x:F2} "
+                + $"lat={targetGlobe.z:F2} (boat intentionally left behind - see comment above). "
+                + "Expect a floating-origin shift cascade (many ShiftCall log lines) right after.");
         }
 
         private static void LogBorderExpanderState()

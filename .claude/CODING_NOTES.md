@@ -25,6 +25,10 @@
 - **That default silently hid real evidence** - both `Recovery.DoRecoverPlayer`'s own logging and `BorderExpander.Plugin.UpdateLimits()`'s "updating/defaulting world limits" lines looked like "never ran," but actually just meant "never written to disk."
 - **`RecoveryReasonLogPatch`** (Harmony Prefix on `Recovery.RecoverPlayer`) logs the real `RecoveryReason` (water/food/`worldBorder`/protein/vitamins/requested) plus live globe coords and `BorderExpander`'s limit state every time a recovery (dock teleport) fires.
 - **Added because guessing after the fact wasn't reliable** - screenshots and F8 pressed at the wrong moment couldn't pin down which of several possible causes triggered the recovery-cascade bug.
+- **F11 debug-teleport only moves `observerMirror`, never `GameState.currentBoat`.** An earlier version also teleported the boat, mirroring `Recovery.DoRecoverPlayer`'s own raw move.
+- **That caused a real soft-crash, confirmed live** - skipping `RecoverBoat`'s multi-frame sequencing (unmoor, several `WaitForFixedUpdate`s, re-moor) desynced cargo rigidbodies and threw several ambient-system `NullReferenceException`s.
+- **Specifically: player auto-disembarked into the water, `OceanRenderer`'s viewpoint went null** - looked identical to a soft crash (could look around, nothing rendered).
+- **`WorldBorder`'s own check reads `GetGlobeCoords` off `observerMirror`** - the same transform the rest of this mod already uses - so moving only that is enough to test border/recovery logic; the boat visually gets left behind, an acceptable tradeoff for a debug-only key.
 
 ## Sailwind modding ecosystem
 
