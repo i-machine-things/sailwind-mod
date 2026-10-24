@@ -203,11 +203,19 @@ namespace SailwindRealEarth
 
         private static void LogBorderExpanderState()
         {
+            Log.LogInfo($"[RealEarth] F8: {DescribeBorderExpanderState()}");
+        }
+
+        // Shared by the F8 manual dump and RecoveryReasonLogPatch (fires automatically whenever
+        // Recovery.RecoverPlayer is called) - both want the same live field snapshot. Reflection,
+        // not a direct assembly reference, since this is a soft dependency we don't want a hard
+        // build reference to.
+        internal static string DescribeBorderExpanderState()
+        {
             Type beType = Type.GetType("BorderExpander.Plugin, BorderExpander");
             if (beType == null)
             {
-                Log.LogInfo("[RealEarth] F8: BorderExpander.Plugin type not found (not loaded?).");
-                return;
+                return "BorderExpander.Plugin type not found (not loaded?).";
             }
 
             object GetStatic(string name)
@@ -224,8 +232,8 @@ namespace SailwindRealEarth
             object east = GetStatic("eastLimit");
             object west = GetStatic("westLimit");
 
-            Log.LogInfo($"[RealEarth] F8: BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
-                + $"limits N={north} S={south} E={east} W={west}");
+            return $"BorderExpander.Plugin.freeSail={freeSailValue} initialized={initialized} "
+                + $"limits N={north} S={south} E={east} W={west}";
         }
 
         private void OnGUI()
@@ -472,6 +480,27 @@ namespace SailwindRealEarth
                     + $"(climatology {speedKn:F1}kn scaling vanilla {vanillaMagnitude:F2}, "
                     + "clamped to vanilla range).");
             }
+        }
+    }
+
+    // Direct visibility into why a recovery (the "out of game area"/thirst/hunger/etc. dock
+    // teleport) fired, instead of inferring it after the fact - BepInEx's LogOutput.log doesn't
+    // include Unity's own Debug.Log calls by default (WriteUnityLog=false in BepInEx.cfg unless
+    // the user opts in), so neither Recovery.DoRecoverPlayer's nor BorderExpander's own logging
+    // ("updating/defaulting world limits") were ever reaching the log file - this patch logs the
+    // actual RecoveryReason plus live globe coords and BorderExpander's border-limit state at the
+    // exact moment recovery is requested, through our own ManualLogSource instead.
+    [HarmonyPatch(typeof(Recovery), "RecoverPlayer")]
+    internal static class RecoveryReasonLogPatch
+    {
+        private static void Prefix(RecoveryReason reason)
+        {
+            Vector3 globe = (FloatingOriginManager.instance != null && Refs.observerMirror != null)
+                ? FloatingOriginManager.instance.GetGlobeCoords(Refs.observerMirror.transform)
+                : new Vector3(float.NaN, float.NaN, float.NaN);
+
+            Plugin.Log.LogWarning($"[RealEarth][Recovery] RecoverPlayer reason={reason} "
+                + $"lon={globe.x:F3} lat={globe.z:F3} | {Plugin.DescribeBorderExpanderState()}");
         }
     }
 }

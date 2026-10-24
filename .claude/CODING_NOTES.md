@@ -19,6 +19,13 @@
 - **Reference the game's/BepInEx's actual installed DLLs directly (`<Reference><HintPath>`), not NuGet packages, for `Assembly-CSharp`, `BepInEx`, `0Harmony`, and `UnityEngine.*`.** Guarantees the compiled plugin always matches exactly what's loaded at runtime. This is also what the real Sailwind mods on GitHub (`BorderExpander`, `ChaoticWind`) do.
 - **`MonoBehaviour`/`BaseUnityPlugin` needs *both* `UnityEngine.dll` (the legacy facade) and `UnityEngine.CoreModule.dll` referenced** — CoreModule alone throws `CS0012` on `MonoBehaviour`. `OnGUI`/`GUI.*` need a further separate reference, `UnityEngine.IMGUIModule.dll`.
 
+## Live debugging / observability
+
+- **BepInEx's `LogOutput.log` excludes Unity's own `Debug.Log` calls by default** - `WriteUnityLog` in `BepInEx/config/BepInEx.cfg` defaults to `false`. Set it `true` to see vanilla/third-party `Debug.Log` output too.
+- **That default silently hid real evidence** - both `Recovery.DoRecoverPlayer`'s own logging and `BorderExpander.Plugin.UpdateLimits()`'s "updating/defaulting world limits" lines looked like "never ran," but actually just meant "never written to disk."
+- **`RecoveryReasonLogPatch`** (Harmony Prefix on `Recovery.RecoverPlayer`) logs the real `RecoveryReason` (water/food/`worldBorder`/protein/vitamins/requested) plus live globe coords and `BorderExpander`'s limit state every time a recovery (dock teleport) fires.
+- **Added because guessing after the fact wasn't reliable** - screenshots and F8 pressed at the wrong moment couldn't pin down which of several possible causes triggered the recovery-cascade bug.
+
 ## Sailwind modding ecosystem
 
 - **`FloatingOriginManager.instance.GetGlobeCoords(transform)` is the game's real, built-in lat/lon API** — `.x` = longitude, `.z` = latitude, ~9000 Unity units per degree. Confirmed by reading real shipped mod source (`NANDbrew/BorderExpander`, `Rahakami/scrambled-seas`), not by guessing. Don't build a parallel coordinate system — extend this one.
